@@ -3,7 +3,7 @@
 #include <unordered_map>
 
 std::vector<Dag>
-LoadDAG()
+LoadDags()
 {
     return {
         // DAG relativo a ALTAms
@@ -22,7 +22,7 @@ LoadDAG()
 
         // DAG relativo a ALTAng
         Dag{{
-            {"ATLAM5"},
+            {"ATLAng"},
             {"sink"},
             {"IPLSng", "NYCMng"},
             {"KSCYng"},
@@ -37,7 +37,7 @@ LoadDAG()
         }},
 
         // DAG relativo a CHINng
-        Dag{{{"ATLAM5"},
+        Dag{{{"ATLAng"},
              {"IPLSng", "WASHng"},
              {"sink"},
              {"KSCYng"},
@@ -51,22 +51,22 @@ LoadDAG()
              {"NYCMng"}}},
 
         // DAG relativo a DNVRng
-        Dag{{{"ATLAM5"},
+        Dag{{{"ATLAng"},
              {"IPLSng", "HSTNng"},
              {"IPLSng"},
              {"sink"},
              {"LOSAng", "KSCYng"},
-             {"HSTNng"},
+             {"KSCYng"},
              {"DNVRng"},
              {"SNVAng"},
              {"CHINng"},
-             {"SNVAng"},
+             {"DNVRng", "STTLng"},
              {"DNVRng"},
              {"ATLAng", "NYCMng"}}},
 
         // DAG relativo a HSTNng
         Dag{{
-            {"ATLAM5"},
+            {"ATLAng"},
             {"HSTNng"},
             {"IPLSng", "NYCMng"},
             {"KSCYng", "SNVAng"},
@@ -82,7 +82,7 @@ LoadDAG()
 
         // DAG relativo a IPLSng
         Dag{{
-            {"ATLAM5"},
+            {"ATLAng"},
             {"IPLSng"},
             {"IPLSng"},
             {"KSCYng"},
@@ -97,7 +97,7 @@ LoadDAG()
         }},
 
         // DAG relativo a KSCYng
-        Dag{{{"ATLAM5"},
+        Dag{{{"ATLAng"},
              {"IPLSng", "HSTNng"},
              {"IPLSng"},
              {"KSCYng"},
@@ -112,7 +112,7 @@ LoadDAG()
 
         // DAG relativo a LOSAng
         Dag{{
-            {"ATLAM5"},
+            {"ATLAng"},
             {"HSTNng"},
             {"IPLSng"},
             {"SNVAng", "STTLng", "KSCYng"},
@@ -127,7 +127,7 @@ LoadDAG()
         }},
 
         // DAG relativo a NYCMng
-        Dag{{{"ATLAM5"},
+        Dag{{{"ATLAng"},
              {"IPLSng", "WASHng"},
              {"NYCMng"},
              {"KSCYng"},
@@ -141,7 +141,7 @@ LoadDAG()
              {"NYCMng"}}},
 
         // DAG relativo a SNVAng
-        Dag{{{"ATLAM5"},
+        Dag{{{"ATLAng"},
              {"IPLSng", "HSTNng"},
              {"NYCMng"},
              {"SNVAng"},
@@ -156,7 +156,7 @@ LoadDAG()
 
         // DAG relativo a STTLng
         Dag{{
-            {"ATLAM5"},
+            {"ATLAng"},
             {"HSTNng"},
             {"IPLSng"},
             {"STTLng"},
@@ -172,7 +172,7 @@ LoadDAG()
 
         // DAG relativo a WASHng
         Dag{{
-            {"ATLAM5"},
+            {"ATLAng"},
             {"WASHng"},
             {"NYCMng"},
             {"SNVAng", "KSCYng"},
