@@ -46,6 +46,8 @@
 #include <iomanip> // per std::setprecision
 #include <iostream>
 #include <string>
+#include <vector>
+#include "dag_database.h"
 
 
 std::ofstream csvFile;
@@ -59,6 +61,15 @@ struct Link
     std::string source;
     std::string target;
     double capacityMbps;
+};
+
+// struttura che memorizza il nodo, la coda e l'interfaccia di uscita 
+// per ogni elemento del Q-register
+struct Action
+{
+    std::string idNodeDestination;
+    std::uint32_t q_value;
+    Ptr<NetDevice> outDevice; // dispositivo di uscita
 };
 
 void
@@ -160,105 +171,260 @@ installOnOffApplicationV6(std::vector<FlowDemand>& demands,
     }
 }
 
-/*
 void
-ReceivePacket(Ptr<Socket> socket, const std::map<Ipv4Address, std::string>& ipv4ToHostName)
+createQRegisterForAllNodes(
+    std::map<std::string, Ptr<Node>>& nodeMap,
+    std::map<std::string, std::shared_ptr<std::vector<std::vector<Action>>>>& nameToQRegister)
 {
-    Address from;
-    Ptr<Packet> packet = socket->RecvFrom(from);
-    InetSocketAddress addr = InetSocketAddress::ConvertFrom(from);
-    Time sendTime;
-    Time receiverTime;
-    Time latency;
+    std::vector<Dag> dags = LoadDags();
 
-    TimestampTag tag;
-    if (packet->PeekPacketTag(tag))
+    int index = 0;
+    for (const auto& [name, node] : nodeMap)
     {
-        sendTime = tag.GetTimestamp();
-        receiverTime = Simulator::Now();
-        latency = Simulator::Now() - sendTime;
+        // matrice q_register per ogni singolo nodo
+        auto q_register = std::make_shared<std::vector<std::vector<Action>>>();
 
-        std::string srcNode = "unknown";
-        std::string dstNode = "unknown";
-
-        if (!headerWritten)
+        // per ogni DAG, prende la riga corrispondente
+        for (const auto& dag : dags)
         {
-            csvLatency << std::fixed << std::setprecision(9);
-            csvLatency << "src_node,src_ip,dst_node,dst_ip,send_time,receive_time,latency\n";
-            headerWritten = true;
+            if (index < dag.adjacency_list.size())
+            {
+                std::vector<Action> actions;
+                for (const auto& s : dag.adjacency_list[index])
+                {
+                    Action action;
+                    action.idNodeDestination = s;
+                    action.q_value = 0; // valore iniziale di q
+                    actions.push_back(action);
+                }
+                q_register->push_back(std::move(actions));
+            }
+            else
+            {
+                std::cout << "Index out of bounds for DAG adjacency list (node " << name
+                          << ", index=" << index << ")\n";
+            }
         }
 
-        // Prendi indirizzo sorgente (dal socket) e destinazione (quello locale)
-        Ipv4Address srcIp = addr.GetIpv4();
-        Ipv4Address dstIp = socket->GetNode()->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal();
-
-        auto itSrc = ipv4ToHostName.find(srcIp);
-        if (itSrc != ipv4ToHostName.end())
-        {
-            srcNode = itSrc->second;
-        }
-
-        auto itDst = ipv4ToHostName.find(dstIp);
-        if (itDst != ipv4ToHostName.end())
-        {
-            dstNode = itDst->second;
-        }
-
-        csvLatency << srcNode << "," << srcIp << "," << dstNode << "," << dstIp << ","
-                   << sendTime.GetSeconds() << "," << receiverTime.GetSeconds() << ","
-                   << latency.GetSeconds() << "\n";
-    }
-    else
-    {
-        std::cout << "timestamp non trovato " << std::endl;
+        // salva nella nuova mappa: nome nodo → q_register
+        nameToQRegister[name] = q_register;
+        index++;
     }
 
-    std::cout << "[RECEIVED] Time: " << Simulator::Now().GetSeconds()
-              << "s, Size: " << packet->GetSize() << " bytes, From: " << addr.GetIpv4()
-              << std::endl;
+    // TODO: calcolo iniziale del valore q
+    // TODO: associazione dell'interfaccia di uscita per ogni azione
 }
-*/
 
-/*
 void
-InstallUdpReceiverOnAllNodes(const std::map<std::string, Ptr<Node>>& hostMap,
-                             const std::map<Ipv4Address, std::string>& ipv4ToHostName)
+printQRegisters(
+    const std::map<std::string, std::shared_ptr<std::vector<std::vector<Action>>>>& nameToQRegister,
+    const std::map<std::string, Ptr<Node>>& nodeMap)
 {
-    for (const auto& pair : hostMap)
+    for (const auto& [name, q_register_ptr] : nameToQRegister)
     {
-        Ptr<Node> node = pair.second;
+        std::cout << "Nodo: " << name << "\n";
 
+        const auto& q_register = *q_register_ptr;
+        Ptr<Node> node = nodeMap.at(name);
+
+        for (size_t d = 0; d < q_register.size(); ++d)
+        {
+            std::cout << "  DAG " << d << ": ";
+            for (const auto& action : q_register[d])
+            {
+                std::ostringstream outDevStr;
+
+                if (action.outDevice)
+                {
+                    // Provo a ottenere l'indirizzo IPv6 associato al device
+                    Ptr<Ipv6> ipv6 = node->GetObject<Ipv6>();
+                    for (uint32_t i = 0; i < ipv6->GetNInterfaces(); ++i)
+                    {
+                        for (uint32_t j = 0; j < ipv6->GetNAddresses(i); ++j)
+                        {
+                            if (ipv6->GetNetDevice(i) == action.outDevice)
+                            {
+                                Ipv6InterfaceAddress addr = ipv6->GetAddress(i, j);
+                                outDevStr << addr.GetAddress();
+                                break;
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    outDevStr << "NONE";
+                }
+
+                std::cout << "[" << action.idNodeDestination << ", q=" << action.q_value
+                          << ", outDevice=" << outDevStr.str() << "] ";
+            }
+            std::cout << "\n";
+        }
+        std::cout << "-------------------------------------------\n";
+    }
+}
+
+void
+assignOutDevices(
+    const std::map<std::string, Ptr<Node>>& nodeMap,
+    std::map<std::string, std::shared_ptr<std::vector<std::vector<Action>>>>& nameToQRegister)
+{
+    // Step 1: cstruzione mappa <{nome_nodo_sorgente, nome_nodo_destinazione}, NetDevice>
+    std::map<std::pair<std::string, std::string>, Ptr<NetDevice>> nodeToDestDevice;
+
+    for (const auto& [nodeName, node] : nodeMap)
+    {
+        for (uint32_t i = 0; i < node->GetNDevices(); ++i)
+        {
+            Ptr<PointToPointNetDevice> p2pDev =
+                DynamicCast<PointToPointNetDevice>(node->GetDevice(i));
+            if (!p2pDev)
+                continue;
+
+            Ptr<Channel> channel = p2pDev->GetChannel();
+            if (!channel)
+                continue;
+
+            for (uint32_t j = 0; j < channel->GetNDevices(); ++j)
+            {
+                Ptr<NetDevice> peerDev = channel->GetDevice(j);
+                Ptr<Node> peerNode = peerDev->GetNode();
+
+                if (peerNode->GetId() != node->GetId())
+                {
+                    // Trova il nome del peerNode
+                    for (const auto& [peerName, peerNodePtr] : nodeMap)
+                    {
+                        if (peerNodePtr == peerNode)
+                        {
+                            nodeToDestDevice[{nodeName, peerName}] = p2pDev;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Step 2: assegnazione outDevice usando la mappa
+    for (auto& [nodeName, q_register_ptr] : nameToQRegister)
+    {
+        auto& q_register = *q_register_ptr;
+        for (auto& dagRow : q_register)
+        {
+            for (auto& action : dagRow)
+            {
+                auto it = nodeToDestDevice.find({nodeName, action.idNodeDestination});
+                if (it != nodeToDestDevice.end())
+                {
+                    action.outDevice = it->second;
+                }else{
+                    std::cout << "WARNING: Nessun NetDevice trovato da " << nodeName << " a "
+                              << action.idNodeDestination << std::endl;
+                }
+            }
+        }
+    }
+}
+
+    /*
+    void
+    ReceivePacket(Ptr<Socket> socket, const std::map<Ipv4Address, std::string>& ipv4ToHostName)
+    {
+        Address from;
+        Ptr<Packet> packet = socket->RecvFrom(from);
+        InetSocketAddress addr = InetSocketAddress::ConvertFrom(from);
+        Time sendTime;
+        Time receiverTime;
+        Time latency;
+
+        TimestampTag tag;
+        if (packet->PeekPacketTag(tag))
+        {
+            sendTime = tag.GetTimestamp();
+            receiverTime = Simulator::Now();
+            latency = Simulator::Now() - sendTime;
+
+            std::string srcNode = "unknown";
+            std::string dstNode = "unknown";
+
+            if (!headerWritten)
+            {
+                csvLatency << std::fixed << std::setprecision(9);
+                csvLatency << "src_node,src_ip,dst_node,dst_ip,send_time,receive_time,latency\n";
+                headerWritten = true;
+            }
+
+            // Prendi indirizzo sorgente (dal socket) e destinazione (quello locale)
+            Ipv4Address srcIp = addr.GetIpv4();
+            Ipv4Address dstIp = socket->GetNode()->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal();
+
+            auto itSrc = ipv4ToHostName.find(srcIp);
+            if (itSrc != ipv4ToHostName.end())
+            {
+                srcNode = itSrc->second;
+            }
+
+            auto itDst = ipv4ToHostName.find(dstIp);
+            if (itDst != ipv4ToHostName.end())
+            {
+                dstNode = itDst->second;
+            }
+
+            csvLatency << srcNode << "," << srcIp << "," << dstNode << "," << dstIp << ","
+                       << sendTime.GetSeconds() << "," << receiverTime.GetSeconds() << ","
+                       << latency.GetSeconds() << "\n";
+        }
+        else
+        {
+            std::cout << "timestamp non trovato " << std::endl;
+        }
+
+        std::cout << "[RECEIVED] Time: " << Simulator::Now().GetSeconds()
+                  << "s, Size: " << packet->GetSize() << " bytes, From: " << addr.GetIpv4()
+                  << std::endl;
+    }
+    */
+
+    /*
+    void
+    InstallUdpReceiverOnAllNodes(const std::map<std::string, Ptr<Node>>& hostMap,
+                                 const std::map<Ipv4Address, std::string>& ipv4ToHostName)
+    {
+        for (const auto& pair : hostMap)
+        {
+            Ptr<Node> node = pair.second;
+
+            Ptr<Socket> recvSocket = Socket::CreateSocket(node, UdpSocketFactory::GetTypeId());
+            InetSocketAddress local = InetSocketAddress(Ipv4Address::GetAny(), 9);
+            recvSocket->Bind(local);
+
+            // recvSocket->SetRecvCallback(MakeCallback(&ReceivePacket));
+
+            recvSocket->SetRecvCallback(Callback<void, Ptr<Socket>>(
+                [&ipv4ToHostName](Ptr<Socket> socket) { ReceivePacket(socket, ipv4ToHostName); }));
+
+            // std::cout << "[RECEIVER] Installato su nodo " << pair.first << std::endl;
+        }
+    }
+    */
+
+    /*void
+    InstallUdpReceiverOnSingleNode(Ptr<Node> node,
+                                   const std::map<Ipv4Address, std::string>& ipv4ToHostName)
+    {
         Ptr<Socket> recvSocket = Socket::CreateSocket(node, UdpSocketFactory::GetTypeId());
         InetSocketAddress local = InetSocketAddress(Ipv4Address::GetAny(), 9);
         recvSocket->Bind(local);
 
-        // recvSocket->SetRecvCallback(MakeCallback(&ReceivePacket));
-
         recvSocket->SetRecvCallback(Callback<void, Ptr<Socket>>(
-            [&ipv4ToHostName](Ptr<Socket> socket) { ReceivePacket(socket, ipv4ToHostName); }));
+                [&ipv4ToHostName](Ptr<Socket> socket) { ReceivePacket(socket, ipv4ToHostName); }));
 
-        // std::cout << "[RECEIVER] Installato su nodo " << pair.first << std::endl;
-    }
-}
-*/
+            // std::cout << "[RECEIVER] Installato su nodo " << pair.first << std::endl;
+    }*/
 
-
-/*void
-InstallUdpReceiverOnSingleNode(Ptr<Node> node,
-                               const std::map<Ipv4Address, std::string>& ipv4ToHostName)
-{
-    Ptr<Socket> recvSocket = Socket::CreateSocket(node, UdpSocketFactory::GetTypeId());
-    InetSocketAddress local = InetSocketAddress(Ipv4Address::GetAny(), 9);
-    recvSocket->Bind(local);
-
-    recvSocket->SetRecvCallback(Callback<void, Ptr<Socket>>(
-            [&ipv4ToHostName](Ptr<Socket> socket) { ReceivePacket(socket, ipv4ToHostName); }));
-
-        // std::cout << "[RECEIVER] Installato su nodo " << pair.first << std::endl;
-}*/
-
-int
-main()
+    int main()
 {
     // csv generato dai receiver
     csvFile.open("receiver_queue_log.csv");
@@ -458,7 +624,12 @@ main()
             //{"ATLAM5", "", 1000},
 
         };*/
-    
+
+    std::map<std::string, std::shared_ptr<std::vector<std::vector<Action>>>> nameToQRegister;
+    createQRegisterForAllNodes(nodeMap, nameToQRegister);
+    assignOutDevices(nodeMap, nameToQRegister);
+    printQRegisters(nameToQRegister, nodeMap);
+
     // installo le app onoff per generare traffico
     auto allDemands = LoadAllMatrices();
     installOnOffApplicationV6(allDemands[0], nodeMap, nodeNameToIpv6, 0.248); // uso solo la prima demand
