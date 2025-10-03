@@ -6,6 +6,7 @@
 #include "ns3/log.h"
 #include "ns3/socket.h"
 #include "ns3/uinteger.h"
+#include "action.h"
 
 #include <vector>
 
@@ -30,6 +31,7 @@ class QueueStatusReceiver : public Application
 
     const std::vector<uint32_t>& GetReceivedQueueSizes() const;
     const std::vector<QueueInfo>& GetReceivedQueueInfo() const;
+    void SetQRegister(std::shared_ptr<std::vector<std::vector<Action>>> q);
 
   protected:
     virtual void StartApplication() override;
@@ -42,6 +44,7 @@ class QueueStatusReceiver : public Application
     Ptr<Socket> m_socket;
     std::vector<uint32_t> m_receivedQueueSizes;
     std::vector<QueueInfo> m_receivedQueueInfo;
+    std::shared_ptr<std::vector<std::vector<Action>>> m_q_register;
 };
 
 } // namespace ns3
