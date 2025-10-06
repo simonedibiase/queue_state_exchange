@@ -11,7 +11,9 @@
 
 #include "QueueStatusReceiver.h"
 #include "QueueStatusSender.h"
+#include "action.h"
 #include "csv_logger.h"
+#include "dag_database.h"
 #include "flow_demand_reader.h"
 
 #include "ns3/applications-module.h"
@@ -47,8 +49,6 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include "dag_database.h"
-
 
 std::ofstream csvFile;
 using namespace ns3;
@@ -63,43 +63,43 @@ struct Link
     double capacityMbps;
 };
 
-// struttura che memorizza il nodo, la coda e l'interfaccia di uscita 
-// per ogni elemento del Q-register
-struct Action
-{
-    std::string idNodeDestination;
-    std::uint32_t q_value;
-    Ptr<NetDevice> outDevice; // dispositivo di uscita
-};
-
 void
-installReceiverExchangeStateAppOnAllNodes(NodeContainer routers)
+installReceiverExchangeStateAppOnAllNodes(
+    std::map<std::string, Ptr<Node>>& nodeMap,
+    std::map<std::string, std::shared_ptr<std::vector<std::vector<Action>>>>& nameToQRegister)
 {
-    for (uint32_t i = 0; i < routers.GetN(); ++i)
+    for (const auto& [name, node] : nodeMap)
     {
+        auto q_register = nameToQRegister[name];
         Ptr<QueueStatusReceiver> receiverApp = CreateObject<QueueStatusReceiver>();
-        routers.Get(i)->AddApplication(receiverApp);
+        receiverApp->SetQRegister(q_register);
+        node->AddApplication(receiverApp);
         receiverApp->SetStartTime(Seconds(1.0));
         receiverApp->SetStopTime(Seconds(10.0));
     }
 }
 
 void
-installBidirectionalQueueStatusSenders(Ptr<NetDevice> devA,
-                                       Ptr<NetDevice> devB,
-                                       Ipv6Address addrA,
-                                       Ipv6Address addrB,
-                                       Ptr<Node> nodeA,
-                                       Ptr<Node> nodeB)
+installBidirectionalQueueStatusSenders(
+    Ipv6Address addrA,
+    Ipv6Address addrB,
+    Ptr<Node> nodeA,
+    Ptr<Node> nodeB,
+    std::string nameA,
+    std::string nameB,
+    std::shared_ptr<std::vector<std::vector<Action>>> q_registerA,
+    std::shared_ptr<std::vector<std::vector<Action>>> q_registerB,
+    std::int32_t indexA,
+    std::int32_t indexB)
 {
     Ptr<QueueStatusApp> firstWaySender = CreateObject<QueueStatusApp>();
-    firstWaySender->Setup(devA, addrA, addrB);
+    firstWaySender->Setup(addrA, addrB, nameA, nameB, q_registerA, indexB);
     nodeA->AddApplication(firstWaySender);
     firstWaySender->SetStartTime(Seconds(2.0));
     firstWaySender->SetStopTime(Seconds(10.0));
 
     Ptr<QueueStatusApp> secondWaySender = CreateObject<QueueStatusApp>();
-    secondWaySender->Setup(devB, addrB, addrA);
+    secondWaySender->Setup(addrB, addrA, nameB, nameA, q_registerB, indexA);
     nodeB->AddApplication(secondWaySender);
     secondWaySender->SetStartTime(Seconds(2.0));
     secondWaySender->SetStopTime(Seconds(10.0));
@@ -137,6 +137,20 @@ installOnOffApplication(std::vector<FlowDemand>& demands,
     }
 }
 
+int
+returnIndexOfNode(std::vector<std::string> nodeIds, std::string nodeName)
+{
+    int index = 0;
+    for (const auto& name : nodeIds)
+    {
+        if (name == nodeName)
+        {
+            return index;
+        }
+        index++;
+    }
+    return -1; // nodo non trovato
+}
 
 // Simulazione del traffico a partire dalla matrice dinamica - Ipv6
 void
@@ -211,8 +225,6 @@ createQRegisterForAllNodes(
         index++;
     }
 
-    // TODO: calcolo iniziale del valore q
-    // TODO: associazione dell'interfaccia di uscita per ogni azione
 }
 
 void
@@ -319,7 +331,9 @@ assignOutDevices(
                 if (it != nodeToDestDevice.end())
                 {
                     action.outDevice = it->second;
-                }else{
+                }
+                else
+                {
                     std::cout << "WARNING: Nessun NetDevice trovato da " << nodeName << " a "
                               << action.idNodeDestination << std::endl;
                 }
@@ -328,103 +342,8 @@ assignOutDevices(
     }
 }
 
-    /*
-    void
-    ReceivePacket(Ptr<Socket> socket, const std::map<Ipv4Address, std::string>& ipv4ToHostName)
-    {
-        Address from;
-        Ptr<Packet> packet = socket->RecvFrom(from);
-        InetSocketAddress addr = InetSocketAddress::ConvertFrom(from);
-        Time sendTime;
-        Time receiverTime;
-        Time latency;
-
-        TimestampTag tag;
-        if (packet->PeekPacketTag(tag))
-        {
-            sendTime = tag.GetTimestamp();
-            receiverTime = Simulator::Now();
-            latency = Simulator::Now() - sendTime;
-
-            std::string srcNode = "unknown";
-            std::string dstNode = "unknown";
-
-            if (!headerWritten)
-            {
-                csvLatency << std::fixed << std::setprecision(9);
-                csvLatency << "src_node,src_ip,dst_node,dst_ip,send_time,receive_time,latency\n";
-                headerWritten = true;
-            }
-
-            // Prendi indirizzo sorgente (dal socket) e destinazione (quello locale)
-            Ipv4Address srcIp = addr.GetIpv4();
-            Ipv4Address dstIp = socket->GetNode()->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal();
-
-            auto itSrc = ipv4ToHostName.find(srcIp);
-            if (itSrc != ipv4ToHostName.end())
-            {
-                srcNode = itSrc->second;
-            }
-
-            auto itDst = ipv4ToHostName.find(dstIp);
-            if (itDst != ipv4ToHostName.end())
-            {
-                dstNode = itDst->second;
-            }
-
-            csvLatency << srcNode << "," << srcIp << "," << dstNode << "," << dstIp << ","
-                       << sendTime.GetSeconds() << "," << receiverTime.GetSeconds() << ","
-                       << latency.GetSeconds() << "\n";
-        }
-        else
-        {
-            std::cout << "timestamp non trovato " << std::endl;
-        }
-
-        std::cout << "[RECEIVED] Time: " << Simulator::Now().GetSeconds()
-                  << "s, Size: " << packet->GetSize() << " bytes, From: " << addr.GetIpv4()
-                  << std::endl;
-    }
-    */
-
-    /*
-    void
-    InstallUdpReceiverOnAllNodes(const std::map<std::string, Ptr<Node>>& hostMap,
-                                 const std::map<Ipv4Address, std::string>& ipv4ToHostName)
-    {
-        for (const auto& pair : hostMap)
-        {
-            Ptr<Node> node = pair.second;
-
-            Ptr<Socket> recvSocket = Socket::CreateSocket(node, UdpSocketFactory::GetTypeId());
-            InetSocketAddress local = InetSocketAddress(Ipv4Address::GetAny(), 9);
-            recvSocket->Bind(local);
-
-            // recvSocket->SetRecvCallback(MakeCallback(&ReceivePacket));
-
-            recvSocket->SetRecvCallback(Callback<void, Ptr<Socket>>(
-                [&ipv4ToHostName](Ptr<Socket> socket) { ReceivePacket(socket, ipv4ToHostName); }));
-
-            // std::cout << "[RECEIVER] Installato su nodo " << pair.first << std::endl;
-        }
-    }
-    */
-
-    /*void
-    InstallUdpReceiverOnSingleNode(Ptr<Node> node,
-                                   const std::map<Ipv4Address, std::string>& ipv4ToHostName)
-    {
-        Ptr<Socket> recvSocket = Socket::CreateSocket(node, UdpSocketFactory::GetTypeId());
-        InetSocketAddress local = InetSocketAddress(Ipv4Address::GetAny(), 9);
-        recvSocket->Bind(local);
-
-        recvSocket->SetRecvCallback(Callback<void, Ptr<Socket>>(
-                [&ipv4ToHostName](Ptr<Socket> socket) { ReceivePacket(socket, ipv4ToHostName); }));
-
-            // std::cout << "[RECEIVER] Installato su nodo " << pair.first << std::endl;
-    }*/
-
-    int main()
+int
+main()
 {
     // csv generato dai receiver
     csvFile.open("receiver_queue_log.csv");
@@ -439,7 +358,7 @@ assignOutDevices(
     NodeContainer allNodes;
 
     // memorizzo gli Ipv4 dei nodi per la simulazione del traffico
-    //std::map<std::string, Ipv4Address> nodeNameToIpv4;
+    // std::map<std::string, Ipv4Address> nodeNameToIpv4;
 
     // memorizzo gli Ipv6 dei nodi per la simulazione del traffico
     std::map<std::string, Ipv6Address> nodeNameToIpv6;
@@ -515,11 +434,13 @@ assignOutDevices(
     links.push_back({"WASHng", "NYCMng", 4700 * linkScale}); // ok
     links.push_back({"STTLng", "SNVAng", 500 * linkScale});  // ok
 
-
     // contenitore di tutti i netDevice della rete
     NetDeviceContainer allDevices;
 
     uint32_t subnetCount = 0;
+
+    std::map<std::pair<std::string, std::string>, Ipv6InterfaceContainer> linkToIfaces;
+
     for (const auto& link : links)
     {
         PointToPointHelper p2p;
@@ -534,7 +455,7 @@ assignOutDevices(
                   << nodeMap[link.target]->GetId() << std::endl;
 
         allDevices.Add(devices);
-        
+
         // assegna indirizzi IPv6
         // l'obiettivo è impostare indirizzi IPv6 ai nodi
         // ed abilitare un prtocollo di dynamic routing per la
@@ -545,6 +466,7 @@ assignOutDevices(
         prefix << "2001:db8:" << std::hex << subnetCount << "::";
         ipv6.SetBase(Ipv6Address(prefix.str().c_str()), Ipv6Prefix(64));
         Ipv6InterfaceContainer ifaces = ipv6.Assign(devices);
+        linkToIfaces[{link.source, link.target}] = ifaces;
 
         // Attivo il forwarding IPv6
         ifaces.SetForwarding(0, true);
@@ -566,7 +488,6 @@ assignOutDevices(
         if (nodeNameToIpv6.find(link.target) == nodeNameToIpv6.end())
             nodeNameToIpv6[link.target] = addr2;
 
-
         std::cout << "Subnet " << subnetCount << ": " << prefix.str() << std::endl;
         for (uint32_t i = 0; i < devices.GetN(); ++i)
         {
@@ -574,16 +495,11 @@ assignOutDevices(
             std::cout << "\tDevice " << i << " IPv6 = " << addr << std::endl;
         }
 
-        
         // installo già qui l'app dei sender
         // adattamento dell'meccanismo di notifica dello stato della coda
         // sull'abilene network
 
-        installBidirectionalQueueStatusSenders(
-            devices.Get(0), devices.Get(1),
-            ifaces.GetAddress(0, 1), ifaces.GetAddress(1, 1),
-            nodeMap[link.source], nodeMap[link.target]
-        );
+        
 
         std::cout << "[SENDER INSTALLATO] " << link.source << " → " << link.target
                   << "\n\tSrc: " << ifaces.GetAddress(0, 1)
@@ -595,13 +511,43 @@ assignOutDevices(
         subnetCount++;
     }
 
+    std::map<std::string, std::shared_ptr<std::vector<std::vector<Action>>>> nameToQRegister;
+    createQRegisterForAllNodes(nodeMap, nameToQRegister);
+    assignOutDevices(nodeMap, nameToQRegister);
+    printQRegisters(nameToQRegister, nodeMap);
+
+    for (const auto& link : links)
+    {
+        auto key = std::make_pair(link.source, link.target);
+        auto it = linkToIfaces.find(key);
+        if (it == linkToIfaces.end())
+        {
+            std::cerr << "Errore: ifaces non trovati per " << link.source << " → " << link.target
+                      << std::endl;
+            continue;
+        }
+
+        const auto& ifaces = it->second;
+
+        installBidirectionalQueueStatusSenders(ifaces.GetAddress(0, 1),
+                                               ifaces.GetAddress(1, 1),
+                                               nodeMap[link.source],
+                                               nodeMap[link.target],
+                                               link.source,
+                                               link.target,
+                                               nameToQRegister[link.source],
+                                               nameToQRegister[link.target],
+                                               returnIndexOfNode(nodeIds, link.source),
+                                               returnIndexOfNode(nodeIds, link.target));
+    }
+
     // installo i receiver per ottenere e far salvare le info sulle code
-    installReceiverExchangeStateAppOnAllNodes(allNodes);
+    installReceiverExchangeStateAppOnAllNodes(nodeMap, nameToQRegister);
 
     // set della disciplina delle code
     TrafficControlHelper tch;
     tch.Uninstall(allDevices);
-    //tch.Uninstall(allHostsDevs);
+    // tch.Uninstall(allHostsDevs);
     uint16_t handle =
         tch.SetRootQueueDisc("ns3::PfifoFastQueueDisc", "MaxSize", StringValue("500000p"));
     tch.AddInternalQueues(handle, 3, "ns3::DropTailQueue", "MaxSize", StringValue("500000p"));
@@ -625,16 +571,14 @@ assignOutDevices(
 
         };*/
 
-    std::map<std::string, std::shared_ptr<std::vector<std::vector<Action>>>> nameToQRegister;
-    createQRegisterForAllNodes(nodeMap, nameToQRegister);
-    assignOutDevices(nodeMap, nameToQRegister);
-    printQRegisters(nameToQRegister, nodeMap);
-
     // installo le app onoff per generare traffico
     auto allDemands = LoadAllMatrices();
-    installOnOffApplicationV6(allDemands[0], nodeMap, nodeNameToIpv6, 0.248); // uso solo la prima demand
+    installOnOffApplicationV6(allDemands[0],
+                              nodeMap,
+                              nodeNameToIpv6,
+                              0.248); // uso solo la prima demand
 
-    //InstallUdpReceiverOnSingleNode(allHosts.Get(4), ipv4ToHostName);
+    // InstallUdpReceiverOnSingleNode(allHosts.Get(4), ipv4ToHostName);
 
     Simulator::Stop(Seconds(10.0));
     Simulator::Run();
