@@ -15,6 +15,7 @@
 #include "csv_logger.h"
 #include "dag_database.h"
 #include "flow_demand_reader.h"
+#include "qrouting-helper.h"
 
 #include "ns3/applications-module.h"
 #include "ns3/callback.h"
@@ -362,6 +363,7 @@ main()
 
     // memorizzo gli Ipv6 dei nodi per la simulazione del traffico
     std::map<std::string, Ipv6Address> nodeNameToIpv6;
+    std::map<Ipv6Address, std::string> ipv6ToHostName;
 
     // Lisa dei nomi dei nodi (dal file XML su abilene Network)
     std::vector<std::string> nodeIds = {"ATLAM5",
@@ -384,9 +386,15 @@ main()
         allNodes.Add(node);
     }
 
+    std::map<std::string, std::shared_ptr<std::vector<std::vector<Action>>>> nameToQRegister;
+
+    QRoutingHelper qRoutingHelper(&nodeMap, &nameToQRegister, nodeIds, ipv6ToHostName);
+
     RipNgHelper ripngRouting;
     Ipv6ListRoutingHelper listRH;
-    listRH.Add(ripngRouting, 10);
+    //listRH.Add(ripngRouting, 10);
+    listRH.Add(qRoutingHelper, 10);
+    
 
     InternetStackHelper internet;
     internet.SetRoutingHelper(listRH);
@@ -481,6 +489,9 @@ main()
         Ipv6Address addr1 = ifaces.GetAddress(0, 1);
         Ipv6Address addr2 = ifaces.GetAddress(1, 1);
 
+        ipv6ToHostName[addr1] = link.source;
+        ipv6ToHostName[addr2] = link.target;
+
         // Salva solo se non è già presente
         if (nodeNameToIpv6.find(link.source) == nodeNameToIpv6.end())
             nodeNameToIpv6[link.source] = addr1;
@@ -511,7 +522,6 @@ main()
         subnetCount++;
     }
 
-    std::map<std::string, std::shared_ptr<std::vector<std::vector<Action>>>> nameToQRegister;
     createQRegisterForAllNodes(nodeMap, nameToQRegister);
     assignOutDevices(nodeMap, nameToQRegister);
     printQRegisters(nameToQRegister, nodeMap);
@@ -539,6 +549,28 @@ main()
                                                nameToQRegister[link.target],
                                                returnIndexOfNode(nodeIds, link.source),
                                                returnIndexOfNode(nodeIds, link.target));
+    }
+
+    for (const auto& [name, node] : nodeMap)
+    {
+        Ptr<Ipv6> ipv6 = node->GetObject<Ipv6>();
+        Ptr<Ipv6RoutingProtocol> proto = ipv6->GetRoutingProtocol();
+        Ptr<Ipv6ListRouting> list = DynamicCast<Ipv6ListRouting>(proto);
+        if (list)
+        {
+            for (uint32_t i = 0; i < list->GetNRoutingProtocols(); ++i)
+            {
+                int16_t priority;
+                Ptr<Ipv6RoutingProtocol> subProto = list->GetRoutingProtocol(i, priority);
+                Ptr<QRoutingProtocol> qproto = DynamicCast<QRoutingProtocol>(subProto);
+                if (qproto)
+                {
+                    std::cout << "[OK] QRoutingProtocol trovato su nodo " << name << "\n";
+                    qproto->SetAddressToNameMap(ipv6ToHostName);
+                    qproto->SetQRegister(nameToQRegister[name]);
+                }
+            }
+        }
     }
 
     // installo i receiver per ottenere e far salvare le info sulle code
