@@ -57,7 +57,6 @@ QueueStatusReceiver::GetReceivedQueueInfo() const
 void
 QueueStatusReceiver::StartApplication()
 {
-    NS_LOG_INFO("Starting QueueStatusReceiver");
     m_socket = Socket::CreateSocket(GetNode(), TypeId::LookupByName("ns3::Ipv6RawSocketFactory"));
     m_socket->SetAttribute("Protocol", UintegerValue(200));
     m_socket->Bind(Inet6SocketAddress(Ipv6Address::GetAny(), 0));
