@@ -9,6 +9,8 @@
 #include "ns3/packet.h"
 #include "ns3/socket.h"
 #include "ns3/node.h"
+#include "ns3/udp-header.h"
+
 
 #include <limits>
 
@@ -16,6 +18,8 @@ namespace ns3
 {
 
 NS_LOG_COMPONENT_DEFINE("QRoutingProtocol");
+
+NS_OBJECT_ENSURE_REGISTERED(QRoutingProtocol);
 
 QRoutingProtocol::QRoutingProtocol()
 {
@@ -104,18 +108,27 @@ QRoutingProtocol::RouteOutput(Ptr<Packet> p,
                               Ptr<NetDevice> oif,
                               Socket::SocketErrno& sockerr)
 {
+    std::cout << "[QROUTING] RouteOutput invoked" << std::endl;
     Ipv6Address dst = header.GetDestination();
-    std::cout << "[QROUTING] Entrato in RouteOutput verso " << dst << std::endl;
+    std::cout << "[QROUTING] Nodo " << m_nodeName << " ha invocato RouteOutput verso " << dst << std::endl;
+
+    if (p)
+    {
+        Ipv6Header ipv6Header;
+        p->PeekHeader(ipv6Header);
+
+        if (ipv6Header.GetNextHeader() == 200)
+        {
+            std::cout << "[ROUTEOUTPUT] Ignoro pacchetto con NextHeader = 200 (QueueStatusApp)"
+                      << std::endl;
+            return Ptr<Ipv6Route>(nullptr); // lascia gestire ad altri protocolli 
+        }
+    }
+    
+    
 
     // Imposta default errore
     sockerr = Socket::ERROR_NOROUTETOHOST;
-
-    // Ignora pacchetti verso indirizzi non globali
-    if (dst.IsLinkLocal() || dst.IsMulticast())
-    {
-        std::cout << "[QROUTING] Ignoro pacchetto verso indirizzo non globale: " << dst << std::endl;
-        return nullptr;
-    }
 
     // 1) Risolvi nome del nodo di destinazione dalla mappa addr->nome
     auto it = m_addrToName.find(dst);
@@ -185,58 +198,54 @@ QRoutingProtocol::RouteInput(Ptr<const Packet> p,
                              const LocalDeliverCallback& lcb,
                              const ErrorCallback& ecb)
 {
+    //PrintInternalState();
     Ipv6Address dst = header.GetDestination();
     Ipv6Address src = header.GetSource();
+    std::cout << "[ROUTEINPUT] RouteInput invoked. Nodo " << m_nodeName
+              << " ha ricevuto pacchetto partito da:" << src <<" verso:"<< dst << std::endl;
 
-    std::cout << "[QROUTING] RouteInput: pacchetto da " << src << " a " << dst << std::endl;
-
-    // Ignora pacchetti link-local o multicast
-    if (dst.IsLinkLocal() || dst.IsMulticast())
+    // 1) Filtra pacchetti speciali (NextHeader = 200)
+    if (p)
     {
-        std::cout << "[QROUTING] Ignoro pacchetto verso indirizzo non globale: " << dst << std::endl;
-        return false;
+        Ipv6Header ipv6Header;
+        Ptr<Packet> tmp = p->Copy(); // p è const
+        tmp->PeekHeader(ipv6Header);
+
+        if (ipv6Header.GetNextHeader() == 200)
+        {
+            std::cout << "[ROUTEINPUT] Ignoro pacchetto con NextHeader = 200 (QueueStatusApp)"
+                      << std::endl;
+            return false; // lascia gestire ad altri protocolli
+        }
     }
 
-    // Stampiamo la lista di indirizzi globali locali
-    std::cout << "[QROUTING] Lista indirizzi globali locali per questo nodo:" << std::endl;
+    // 2) Controlla se il pacchetto è destinato al nodo locale
     if (m_ipv6)
     {
         for (uint32_t i = 0; i < m_ipv6->GetNInterfaces(); ++i)
         {
             for (uint32_t j = 0; j < m_ipv6->GetNAddresses(i); ++j)
             {
-                Ipv6Address addr = m_ipv6->GetAddress(i, j).GetAddress();
-                if (!addr.IsLinkLocal() && !addr.IsMulticast())
+                if (m_ipv6->GetAddress(i, j).GetAddress() == dst)
                 {
-                    std::cout << "  Interface " << i << ": " << addr << std::endl;
+                    std::cout << "[QROUTING] Pacchetto destinato al nodo locale " << m_nodeName
+                              << std::endl;
+                    if (!lcb.IsNull())
+                        lcb(p, header, idev->GetIfIndex());
+                    return true; // consegnato localmente
                 }
             }
         }
     }
 
-    // Controllo se la destinazione è locale
-    if (m_ipv6)
-    {
-        for (uint32_t i = 0; i < m_ipv6->GetNInterfaces(); ++i)
-        {
-            for (uint32_t j = 0; j < m_ipv6->GetNAddresses(i); ++j)
-            {
-                Ipv6Address addr = m_ipv6->GetAddress(i, j).GetAddress();
-                if (!addr.IsLinkLocal() && !addr.IsMulticast() && addr == dst)
-                {
-                    std::cout << "[QROUTING] PACCHETTO DESTINAZIONE LOCALE sulla interface " << i << std::endl;
-                    lcb(p, header, i);
-                    return true;
-                }
-            }
-        }
-    }
-
-    // Risolvi nome del nodo di destinazione dalla mappa addr->nome
+    // 3) Risolvi il nome del nodo di destinazione
     auto it = m_addrToName.find(dst);
     if (it == m_addrToName.end())
     {
-        std::cout << "[QROUTING] WARNING: Destination address non trovato nella mappa addr->nome: " << dst << std::endl;
+        std::cout << "[ROUTEINPUT] WARNING INPUT: Destination address not found: " << dst
+                  << std::endl;
+        if (!ecb.IsNull())
+            ecb(p, header, Socket::ERROR_NOROUTETOHOST);
         return false;
     }
 
@@ -244,35 +253,64 @@ QRoutingProtocol::RouteInput(Ptr<const Packet> p,
     int destIndex = IndexOfNodeNameInNodeIds(destName);
     if (destIndex < 0)
     {
-        std::cout << "[QROUTING] WARNING: Destination name non trovato in nodeIds: " << destName << std::endl;
+        std::cout << "[ROUTEINPUT] WARNING INPUT: Destination name not found in nodeIds: "
+                  << destName << std::endl;
+        if (!ecb.IsNull())
+            ecb(p, header, Socket::ERROR_NOROUTETOHOST);
         return false;
     }
 
-    // Trova l'action migliore dal Q-table
+    // 4) Trova la migliore azione nella Q-table
     Action chosen;
-    if (!FindMinActionForDestinationIndex(destIndex, chosen))
+    if (!FindMinActionForDestinationIndex(destIndex, chosen) || chosen.outDevice == nullptr)
     {
-        std::cout << "[QROUTING] WARNING: Nessuna action valida trovata per destIndex " << destIndex << " (" << destName << ")" << std::endl;
+        std::cout << "[ROUTEINPUT] WARNING INPUT: No valid action for destIndex " << destIndex
+                  << " (" << destName << ")" << std::endl;
+        if (!ecb.IsNull())
+            ecb(p, header, Socket::ERROR_NOROUTETOHOST);
         return false;
     }
 
-    if (chosen.outDevice == nullptr)
-    {
-        std::cout << "[QROUTING] WARNING: Chosen action ha outDevice nullo" << std::endl;
-        return false;
-    }
-
-    // Stampiamo interfaccia su cui rilanciamo il pacchetto
-    std::cout << "[QROUTING] Pacchetto inoltrato tramite interface " << chosen.outDevice->GetIfIndex() << std::endl;
-
-    // Costruisci la route e inoltra
+    // 5) Costruisci la route per il forwarding
     Ptr<Ipv6Route> route = Create<Ipv6Route>();
-    route->SetSource(src);
     route->SetDestination(dst);
     route->SetOutputDevice(chosen.outDevice);
 
-    ucb(idev, route, p, header);
-    return true;
+    // Trova un indirizzo sorgente globale per l’interfaccia di uscita
+    if (m_ipv6)
+    {
+        int32_t ifIndex = m_ipv6->GetInterfaceForDevice(chosen.outDevice);
+        if (ifIndex >= 0)
+        {
+            for (uint32_t i = 0; i < m_ipv6->GetNAddresses(ifIndex); ++i)
+            {
+                Ipv6InterfaceAddress ifAddr = m_ipv6->GetAddress(ifIndex, i);
+                if (!ifAddr.GetAddress().IsLinkLocal())
+                {
+                    route->SetSource(ifAddr.GetAddress());
+                    break;
+                }
+            }
+        }
+    }
+
+   
+
+    // 6) Chiama callback di forwarding unicast
+    if (!ucb.IsNull()){
+        ucb(idev, route, p, header);
+        std::cout << "[ROUTEINPUT] forwarding: src=" << src << " dst=" << dst
+                  << " incomingIf=" << idev->GetIfIndex()
+                  << " outIf=" << chosen.outDevice->GetIfIndex()
+                  << " q=" << chosen.q_value << std::endl;
+        std::cout << "[ROUTEINPUT] RouteInput: forwarding pacchetto tramite interfaccia "
+                  << chosen.outDevice->GetIfIndex() << " verso " << dst << std::endl;
+    }else{
+        std::cout << "[ROUTEINPUT] WARNING INPUT: non è riuscito ad eseguire ucb, in quanto nullo"
+                  << std::endl;
+        }
+
+    return true; // pacchetto gestito dal protocollo
 }
 
 void
