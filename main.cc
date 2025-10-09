@@ -179,7 +179,7 @@ installOnOffApplicationV6(std::vector<FlowDemand>& demands,
 
         ApplicationContainer app = onoff.Install(srcNode);
         app.Start(Seconds(2.0));
-        app.Stop(Seconds(10.0));
+        app.Stop(Seconds(10.0)); // o quanto vuoi far durare
 
         // std::cout << "[TRAFFICO] " << flow.src << " -> " << flow.dst
         //          << ", indirizzo dst = " << dstAddr << ", rate = " << rateStr.str() << std::endl;
@@ -392,9 +392,8 @@ main()
 
     RipNgHelper ripngRouting;
     Ipv6ListRoutingHelper listRH;
-    //listRH.Add(ripngRouting, 10);
-    listRH.Add(qRoutingHelper, 10);
-    
+    listRH.Add(qRoutingHelper, 100);
+    listRH.Add(ripngRouting, 10);
 
     InternetStackHelper internet;
     internet.SetRoutingHelper(listRH);
@@ -510,7 +509,9 @@ main()
         // adattamento dell'meccanismo di notifica dello stato della coda
         // sull'abilene network
 
-        
+        // Abilita PCAP per entrambi i dispositivi del link
+        p2p.EnablePcap(link.source + "-" + link.target, devices.Get(0), true);
+        p2p.EnablePcap(link.source + "-" + link.target, devices.Get(1), true);
 
         std::cout << "[SENDER INSTALLATO] " << link.source << " → " << link.target
                   << "\n\tSrc: " << ifaces.GetAddress(0, 1)
