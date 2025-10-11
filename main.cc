@@ -470,7 +470,7 @@ main()
         //
         Ipv6AddressHelper ipv6;
         std::ostringstream prefix;
-        prefix << "2001:db8:" << std::hex << subnetCount << "::";
+        prefix << "fd00:" << std::hex << subnetCount << "::"; // prefisso ULA, non riservato
         ipv6.SetBase(Ipv6Address(prefix.str().c_str()), Ipv6Prefix(64));
         Ipv6InterfaceContainer ifaces = ipv6.Assign(devices);
         linkToIfaces[{link.source, link.target}] = ifaces;
@@ -611,7 +611,6 @@ main()
                               nodeNameToIpv6,
                               0.248); // uso solo la prima demand
 
-    // InstallUdpReceiverOnSingleNode(allHosts.Get(4), ipv4ToHostName);
 
     Simulator::Stop(Seconds(10.0));
     Simulator::Run();
