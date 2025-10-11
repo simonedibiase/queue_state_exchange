@@ -108,10 +108,18 @@ QRoutingProtocol::RouteOutput(Ptr<Packet> p,
                               Ptr<NetDevice> oif,
                               Socket::SocketErrno& sockerr)
 {
-    std::cout << "[QROUTING] RouteOutput invoked" << std::endl;
+    //std::cout << "[QROUTING] RouteOutput invoked" << std::endl;
     Ipv6Address dst = header.GetDestination();
-    std::cout << "[QROUTING] Nodo " << m_nodeName << " ha invocato RouteOutput verso " << dst << std::endl;
+    //std::cout << "[QROUTING] Nodo " << m_nodeName << " ha invocato RouteOutput verso " << dst << std::endl;
 
+    uint8_t bytes[16];
+    dst.GetBytes(bytes);
+    if (bytes[0] != 0xfd)
+    {
+        // std::cout << "[QROUTING] Ignoro pacchetto non fd00::/8, dest=" << dst << std::endl;
+        return nullptr;
+    }
+    
     if (p)
     {
         Ipv6Header ipv6Header;
@@ -119,14 +127,11 @@ QRoutingProtocol::RouteOutput(Ptr<Packet> p,
 
         if (ipv6Header.GetNextHeader() == 200)
         {
-            std::cout << "[ROUTEOUTPUT] Ignoro pacchetto con NextHeader = 200 (QueueStatusApp)"
-                      << std::endl;
+            //std::cout << "[ROUTEOUTPUT] Ignoro pacchetto con NextHeader = 200 (QueueStatusApp)"
+            //          << std::endl;
             return Ptr<Ipv6Route>(nullptr); // lascia gestire ad altri protocolli 
         }
     }
-    
-    
-
     // Imposta default errore
     sockerr = Socket::ERROR_NOROUTETOHOST;
 
@@ -183,7 +188,7 @@ QRoutingProtocol::RouteOutput(Ptr<Packet> p,
         }
     }
 
-    std::cout << "[QROUTING] RouteOutput: chosen interface " << chosen.outDevice->GetIfIndex()<< " per destinazione " << dst << std::endl;
+    //std::cout << "[QROUTING] RouteOutput: chosen interface " << chosen.outDevice->GetIfIndex()<< " per destinazione " << dst << std::endl;
 
     sockerr = Socket::ERROR_NOTERROR;
     return route;
@@ -201,10 +206,19 @@ QRoutingProtocol::RouteInput(Ptr<const Packet> p,
     //PrintInternalState();
     Ipv6Address dst = header.GetDestination();
     Ipv6Address src = header.GetSource();
-    std::cout << "[ROUTEINPUT] RouteInput invoked. Nodo " << m_nodeName
-              << " ha ricevuto pacchetto partito da:" << src <<" verso:"<< dst << std::endl;
+    //std::cout << "[ROUTEINPUT] RouteInput invoked. Nodo " << m_nodeName
+     //         << " ha ricevuto pacchetto partito da:" << src <<" verso:"<< dst << std::endl;
 
     // 1) Filtra pacchetti speciali (NextHeader = 200)
+
+    uint8_t bytes[16];
+    dst.GetBytes(bytes);
+    if (bytes[0] != 0xfd)
+    {
+        // std::cout << "[QROUTING] Ignoro pacchetto non fd00::/8, dest=" << dst << std::endl;
+        return false;
+    }
+
     if (p)
     {
         Ipv6Header ipv6Header;
@@ -213,8 +227,8 @@ QRoutingProtocol::RouteInput(Ptr<const Packet> p,
 
         if (ipv6Header.GetNextHeader() == 200)
         {
-            std::cout << "[ROUTEINPUT] Ignoro pacchetto con NextHeader = 200 (QueueStatusApp)"
-                      << std::endl;
+            //std::cout << "[ROUTEINPUT] Ignoro pacchetto con NextHeader = 200 (QueueStatusApp)"
+            //          << std::endl;
             return false; // lascia gestire ad altri protocolli
         }
     }
@@ -299,12 +313,12 @@ QRoutingProtocol::RouteInput(Ptr<const Packet> p,
     // 6) Chiama callback di forwarding unicast
     if (!ucb.IsNull()){
         ucb(idev, route, p, header);
-        std::cout << "[ROUTEINPUT] forwarding: src=" << src << " dst=" << dst
+        /*std::cout << "[ROUTEINPUT] forwarding: src=" << src << " dst=" << dst
                   << " incomingIf=" << idev->GetIfIndex()
                   << " outIf=" << chosen.outDevice->GetIfIndex()
                   << " q=" << chosen.q_value << std::endl;
         std::cout << "[ROUTEINPUT] RouteInput: forwarding pacchetto tramite interfaccia "
-                  << chosen.outDevice->GetIfIndex() << " verso " << dst << std::endl;
+                  << chosen.outDevice->GetIfIndex() << " verso " << dst << std::endl;*/
     }else{
         std::cout << "[ROUTEINPUT] WARNING INPUT: non è riuscito ad eseguire ucb, in quanto nullo"
                   << std::endl;
