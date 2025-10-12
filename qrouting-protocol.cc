@@ -6,11 +6,11 @@
 #include "ns3/ipv6.h"
 #include "ns3/log.h"
 #include "ns3/net-device.h"
-#include "ns3/packet.h"
-#include "ns3/socket.h"
 #include "ns3/node.h"
+#include "ns3/packet.h"
+#include "ns3/simulator.h"
+#include "ns3/socket.h"
 #include "ns3/udp-header.h"
-
 
 #include <limits>
 
@@ -119,7 +119,7 @@ QRoutingProtocol::RouteOutput(Ptr<Packet> p,
         // std::cout << "[QROUTING] Ignoro pacchetto non fd00::/8, dest=" << dst << std::endl;
         return nullptr;
     }
-    
+
     if (p)
     {
         Ipv6Header ipv6Header;
@@ -360,6 +360,7 @@ void
 QRoutingProtocol::PrintInternalState() const
 {
     std::cout << "================= QRoutingProtocol Internal State =================" << std::endl;
+    std::cout << "Current simulation time: " << Simulator::Now().GetSeconds() << " s" << std::endl;
     std::cout << "Node name: " << m_nodeName << std::endl;
 
     // m_ipv6
