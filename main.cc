@@ -106,38 +106,6 @@ installBidirectionalQueueStatusSenders(
     secondWaySender->SetStopTime(Seconds(10.0));
 }
 
-void
-installOnOffApplication(std::vector<FlowDemand>& demands,
-                        std::map<std::string, Ptr<Node>>& nodeMap,
-                        std::map<std::string, Ipv4Address>& nodeNameToIpv4,
-                        double scale,
-                        double startTime,
-                        double stopTime)
-{
-    for (const auto& flow : demands)
-    {
-        Ptr<Node> srcNode = nodeMap.at(flow.src);
-        Ipv4Address dstAddr = nodeNameToIpv4.at(flow.dst);
-
-        double scaledRate = flow.rateMbps * scale;
-        std::ostringstream rateStr;
-        rateStr << scaledRate << "Mbps";
-
-        OnOffHelper onoff("ns3::UdpSocketFactory", InetSocketAddress(dstAddr, 9));
-        onoff.SetAttribute("DataRate", StringValue(rateStr.str()));
-        onoff.SetAttribute("PacketSize", UintegerValue(1024));
-        onoff.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
-        onoff.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0]"));
-
-        ApplicationContainer app = onoff.Install(srcNode);
-        app.Start(Seconds(startTime));
-        app.Stop(Seconds(stopTime)); // o quanto vuoi far durare
-
-        // std::cout << "[TRAFFICO] " << flow.src << " -> " << flow.dst
-        //         << ", indirizzo dst = " << dstAddr << ", rate = " << rateStr.str() << std::endl;
-    }
-}
-
 int
 returnIndexOfNode(std::vector<std::string> nodeIds, std::string nodeName)
 {
@@ -179,7 +147,7 @@ installOnOffApplicationV6(std::vector<FlowDemand>& demands,
 
         ApplicationContainer app = onoff.Install(srcNode);
         app.Start(Seconds(2.0));
-        app.Stop(Seconds(10.0)); // o quanto vuoi far durare
+        app.Stop(Seconds(10.0)); 
 
         // std::cout << "[TRAFFICO] " << flow.src << " -> " << flow.dst
         //          << ", indirizzo dst = " << dstAddr << ", rate = " << rateStr.str() << std::endl;
@@ -401,8 +369,7 @@ main()
 
     std::vector<Link> links;
 
-    // link originali
-    /*
+    // link originali    
     // Aggiungi tutti i link con valori scalati
     links.push_back({"ATLAng", "ATLAM5", 9.92}); // 99.2Mbps
     links.push_back({"HSTNng", "ATLAng", 9.92});
@@ -419,9 +386,9 @@ main()
     links.push_back({"SNVAng", "LOSAng", 9.92});
     links.push_back({"WASHng", "NYCMng", 9.92});
     links.push_back({"STTLng", "SNVAng", 9.92});
-*/
 
-    double linkScale = 0.0125;
+
+    /*double linkScale = 0.0125;
 
     // usa questi per vedere dei risultati
     links.push_back({"ATLAng", "ATLAM5", 120 * linkScale});  // ok
@@ -440,7 +407,7 @@ main()
     links.push_back({"SNVAng", "LOSAng", 1000 * linkScale}); // pk
     links.push_back({"WASHng", "NYCMng", 4700 * linkScale}); // ok
     links.push_back({"STTLng", "SNVAng", 500 * linkScale});  // ok
-
+*/
     // contenitore di tutti i netDevice della rete
     NetDeviceContainer allDevices;
 
@@ -566,7 +533,6 @@ main()
                 Ptr<QRoutingProtocol> qproto = DynamicCast<QRoutingProtocol>(subProto);
                 if (qproto)
                 {
-                    std::cout << "[OK] QRoutingProtocol trovato su nodo " << name << "\n";
                     qproto->SetAddressToNameMap(ipv6ToHostName);
                     qproto->SetQRegister(nameToQRegister[name]);
                 }
