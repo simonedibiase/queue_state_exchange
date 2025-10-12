@@ -153,11 +153,11 @@ QueueStatusApp::SendQueueStatus()
 {
     Time now = Simulator::Now();
 
-    PrintQRegisterForNode(m_nameSource, m_q_registerSource);
-    std::cout << "[Sender] Time:" << now.GetSeconds()
+    //PrintQRegisterForNode(m_nameSource, m_q_registerSource);
+    /*std::cout << "[Sender] Time:" << now.GetSeconds()
               << "s Sto mandando il pacchetto contenente i valori q, destinato a: "
               << m_nameDestination << std::endl;
-
+*/
     // individua le righe da selezionare
     std::vector<uint32_t> selectedLines =
         selectQRegisterLines(m_indexNodeDestination, m_nameSource);
@@ -192,8 +192,8 @@ QueueStatusApp::SendQueueStatus()
 
             buffer.insert(buffer.end(), m_nameSource.begin(), m_nameSource.end());
 
-            std::cout << "[Q-Register] lineIndex=" << lineIndex << ", minQValue=" << minQValue
-                      << ", nameSource=" << m_nameSource << std::endl;
+            std::cout << "[SENDER] lineIndex=" << lineIndex << ", minQValue=" << minQValue
+                      << ", nameSource=" << m_nameSource << "n nameDestination: " << m_nameDestination << std::endl;
         }
         else
         {
@@ -205,8 +205,8 @@ QueueStatusApp::SendQueueStatus()
     // costruisco il pacchetto
     Ptr<Packet> packet = Create<Packet>(buffer.data(), buffer.size());
 
-    std::cout << "[DEBUG] Pacchetto costruito, dimensione totale: " << buffer.size() << " byte"
-              << std::endl;
+    //std::cout << "[DEBUG] Pacchetto costruito, dimensione totale: " << buffer.size() << " byte"
+    //          << std::endl;
 
     // invio pacchetto
     m_socket->SendTo(packet, 0, Inet6SocketAddress(m_destinationAddress, 0));
