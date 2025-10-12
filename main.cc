@@ -141,7 +141,7 @@ installOnOffApplicationV6(std::vector<FlowDemand>& demands,
 
         OnOffHelper onoff("ns3::UdpSocketFactory", Inet6SocketAddress(dstAddr, port));
         onoff.SetAttribute("DataRate", StringValue(rateStr.str()));
-        onoff.SetAttribute("PacketSize", UintegerValue(2048));
+        onoff.SetAttribute("PacketSize", UintegerValue(1024));
         onoff.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
         onoff.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0]"));
 
@@ -308,6 +308,21 @@ assignOutDevices(
                 }
             }
         }
+    }
+}
+
+void
+installUdpSinkOnAllNodes(std::map<std::string, Ptr<Node>>& nodeMap, uint16_t port)
+{
+    for (auto& [name, node] : nodeMap)
+    {
+        // Il PacketSink ascolta su tutte le interfacce (:: è l'indirizzo "any" IPv6)
+        Inet6SocketAddress local = Inet6SocketAddress(Ipv6Address::GetAny(), port);
+        PacketSinkHelper sinkHelper("ns3::UdpSocketFactory", local);
+
+        ApplicationContainer sinkApp = sinkHelper.Install(node);
+        sinkApp.Start(Seconds(1.0));
+        sinkApp.Stop(Seconds(10.0));
     }
 }
 
@@ -572,6 +587,7 @@ main()
 
     // installo le app onoff per generare traffico
     auto allDemands = LoadAllMatrices();
+    installUdpSinkOnAllNodes(nodeMap, 9999);
     installOnOffApplicationV6(allDemands[0],
                               nodeMap,
                               nodeNameToIpv6,
