@@ -76,7 +76,7 @@ installReceiverExchangeStateAppOnAllNodes(
         receiverApp->SetQRegister(q_register);
         node->AddApplication(receiverApp);
         receiverApp->SetStartTime(Seconds(1.0));
-        receiverApp->SetStopTime(Seconds(10.0));
+        receiverApp->SetStopTime(Seconds(30.0));
     }
 }
 
@@ -97,13 +97,13 @@ installBidirectionalQueueStatusSenders(
     firstWaySender->Setup(addrA, addrB, nameA, nameB, q_registerA, indexB);
     nodeA->AddApplication(firstWaySender);
     firstWaySender->SetStartTime(Seconds(2.0));
-    firstWaySender->SetStopTime(Seconds(10.0));
+    firstWaySender->SetStopTime(Seconds(30.0));
 
     Ptr<QueueStatusApp> secondWaySender = CreateObject<QueueStatusApp>();
     secondWaySender->Setup(addrB, addrA, nameB, nameA, q_registerB, indexA);
     nodeB->AddApplication(secondWaySender);
     secondWaySender->SetStartTime(Seconds(2.0));
-    secondWaySender->SetStopTime(Seconds(10.0));
+    secondWaySender->SetStopTime(Seconds(30.0));
 }
 
 int
@@ -322,7 +322,7 @@ installUdpSinkOnAllNodes(std::map<std::string, Ptr<Node>>& nodeMap, uint16_t por
 
         ApplicationContainer sinkApp = sinkHelper.Install(node);
         sinkApp.Start(Seconds(1.0));
-        sinkApp.Stop(Seconds(10.0));
+        sinkApp.Stop(Seconds(30.0));
     }
 }
 
@@ -376,14 +376,14 @@ main()
     RipNgHelper ripngRouting;
     Ipv6ListRoutingHelper listRH;
     listRH.Add(qRoutingHelper, 100);
-    listRH.Add(ripngRouting, 10);
+    //listRH.Add(ripngRouting, 10);
 
     InternetStackHelper internet;
     internet.SetRoutingHelper(listRH);
     internet.Install(allNodes);
 
     std::vector<Link> links;
-
+/*
     // link originali    
     // Aggiungi tutti i link con valori scalati
     links.push_back({"ATLAng", "ATLAM5", 9.92}); // 99.2Mbps
@@ -401,9 +401,9 @@ main()
     links.push_back({"SNVAng", "LOSAng", 9.92});
     links.push_back({"WASHng", "NYCMng", 9.92});
     links.push_back({"STTLng", "SNVAng", 9.92});
+*/
 
-
-    /*double linkScale = 0.0125;
+    double linkScale = 0.0125;
 
     // usa questi per vedere dei risultati
     links.push_back({"ATLAng", "ATLAM5", 120 * linkScale});  // ok
@@ -422,7 +422,7 @@ main()
     links.push_back({"SNVAng", "LOSAng", 1000 * linkScale}); // pk
     links.push_back({"WASHng", "NYCMng", 4700 * linkScale}); // ok
     links.push_back({"STTLng", "SNVAng", 500 * linkScale});  // ok
-*/
+
     // contenitore di tutti i netDevice della rete
     NetDeviceContainer allDevices;
 
@@ -594,7 +594,7 @@ main()
                               0.248); // uso solo la prima demand
 
 
-    Simulator::Stop(Seconds(10.0));
+    Simulator::Stop(Seconds(30.0));
     Simulator::Run();
     Simulator::Destroy();
 
