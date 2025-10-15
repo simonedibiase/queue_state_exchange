@@ -121,7 +121,7 @@ returnIndexOfNode(std::vector<std::string> nodeIds, std::string nodeName)
     return -1; // nodo non trovato
 }
 
-// Simulazione del traffico a partire dalla matrice dinamica - Ipv6
+//Simulazione del traffico a partire dalla matrice dinamica - Ipv6
 void
 installOnOffApplicationV6(std::vector<FlowDemand>& demands,
                           std::map<std::string, Ptr<Node>>& hostMap,
@@ -146,11 +146,11 @@ installOnOffApplicationV6(std::vector<FlowDemand>& demands,
         onoff.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0]"));
 
         ApplicationContainer app = onoff.Install(srcNode);
-        app.Start(Seconds(2.0));
+        app.Start(Seconds(8.0));
         app.Stop(Seconds(10.0)); 
 
-        // std::cout << "[TRAFFICO] " << flow.src << " -> " << flow.dst
-        //          << ", indirizzo dst = " << dstAddr << ", rate = " << rateStr.str() << std::endl;
+        std::cout << "[TRAFFICO] " << flow.src << " -> " << flow.dst
+                  << ", indirizzo dst = " << dstAddr << ", rate = " << rateStr.str() << std::endl;
     }
 }
 
@@ -326,6 +326,71 @@ installUdpSinkOnAllNodes(std::map<std::string, Ptr<Node>>& nodeMap, uint16_t por
     }
 }
 
+void
+printAllNodeInterfaces(const std::map<std::string, Ptr<Node>>& nodeMap,
+                       const std::map<std::string, Ptr<Node>>& hostMap)
+{
+    std::cout << "\n=============================\n";
+    std::cout << "📡 INTERFACCE IPv6 DEI NODI\n";
+    std::cout << "=============================\n";
+
+    // 🔹 NODI DI ROUTING (router)
+    std::cout << "\n>>> ROUTER NODES <<<\n";
+    for (const auto& [name, node] : nodeMap)
+    {
+        std::cout << "Nodo: " << name << " (ID=" << node->GetId() << ")\n";
+
+        Ptr<Ipv6> ipv6 = node->GetObject<Ipv6>();
+        if (!ipv6)
+        {
+            std::cout << "  ⚠️ Nessun stack IPv6 installato\n";
+            continue;
+        }
+
+        for (uint32_t i = 0; i < ipv6->GetNInterfaces(); ++i)
+        {
+            std::cout << "  Interfaccia " << i << ":\n";
+            for (uint32_t j = 0; j < ipv6->GetNAddresses(i); ++j)
+            {
+                Ipv6InterfaceAddress addr = ipv6->GetAddress(i, j);
+                if (!addr.GetAddress().IsLinkLocal())
+                {
+                    std::cout << "    → " << addr.GetAddress() << std::endl;
+                }
+            }
+        }
+    }
+
+    // 🔹 HOST LOCALI
+    std::cout << "\n>>> HOST NODES <<<\n";
+    for (const auto& [name, host] : hostMap)
+    {
+        std::cout << "Host: " << name << " (ID=" << host->GetId() << ")\n";
+
+        Ptr<Ipv6> ipv6 = host->GetObject<Ipv6>();
+        if (!ipv6)
+        {
+            std::cout << "  ⚠️ Nessun stack IPv6 installato\n";
+            continue;
+        }
+
+        for (uint32_t i = 0; i < ipv6->GetNInterfaces(); ++i)
+        {
+            std::cout << "  Interfaccia " << i << ":\n";
+            for (uint32_t j = 0; j < ipv6->GetNAddresses(i); ++j)
+            {
+                Ipv6InterfaceAddress addr = ipv6->GetAddress(i, j);
+                if (!addr.GetAddress().IsLinkLocal())
+                {
+                    std::cout << "    → " << addr.GetAddress() << std::endl;
+                }
+            }
+        }
+    }
+
+    std::cout << "=============================\n\n";
+}
+
 int
 main()
 {
@@ -340,6 +405,8 @@ main()
     // Mappa degli ID nodo
     std::map<std::string, Ptr<Node>> nodeMap;
     NodeContainer allNodes;
+    NodeContainer allHosts;
+    std::map<std::string, Ptr<Node>> hostMap;
 
     // memorizzo gli Ipv4 dei nodi per la simulazione del traffico
     // std::map<std::string, Ipv4Address> nodeNameToIpv4;
@@ -371,7 +438,7 @@ main()
 
     std::map<std::string, std::shared_ptr<std::vector<std::vector<Action>>>> nameToQRegister;
 
-    QRoutingHelper qRoutingHelper(&nodeMap, &nameToQRegister, nodeIds, ipv6ToHostName);
+    QRoutingHelper qRoutingHelper(&nodeMap, &nameToQRegister, nodeIds, ipv6ToHostName, &hostMap);
 
     RipNgHelper ripngRouting;
     Ipv6ListRoutingHelper listRH;
@@ -470,9 +537,6 @@ main()
         Ipv6Address addr1 = ifaces.GetAddress(0, 1);
         Ipv6Address addr2 = ifaces.GetAddress(1, 1);
 
-        ipv6ToHostName[addr1] = link.source;
-        ipv6ToHostName[addr2] = link.target;
-
         // Salva solo se non è già presente
         if (nodeNameToIpv6.find(link.source) == nodeNameToIpv6.end())
             nodeNameToIpv6[link.source] = addr1;
@@ -504,6 +568,69 @@ main()
                   << "\n\tDst: " << ifaces.GetAddress(0, 1) << std::endl;
         subnetCount++;
     }
+
+    std::map<std::string, Ipv6Address> hostAddressMap;
+
+    InternetStackHelper hostStack;
+    hostStack.SetIpv6StackInstall(true);
+    hostStack.SetIpv4StackInstall(false);
+    NetDeviceContainer allHostsDevs;
+
+    for (const auto& [routerName, routerNode] : nodeMap)
+    {
+        // InternetStackHelper internet2;
+
+        // Creo gli host
+        Ptr<Node> host = CreateObject<Node>();
+        hostMap[routerName] = host;
+        hostStack.Install(host);
+
+        NodeContainer hostRouter;
+        hostRouter.Add(host);
+        allHosts.Add(host);
+        hostRouter.Add(routerNode);
+
+        // Link host <-> router
+        PointToPointHelper p2p;
+        p2p.SetDeviceAttribute("DataRate", StringValue("125Mbps"));
+        p2p.SetChannelAttribute("Delay", StringValue("1ms"));
+
+        NetDeviceContainer dev = p2p.Install(hostRouter);
+
+        allHostsDevs.Add(dev.Get(0));
+        allHostsDevs.Add(dev.Get(1));
+
+        // assegnazione ipv4
+        Ipv6AddressHelper ipv6;
+        std::ostringstream subnet;
+        subnet << "fd00:" << std::hex << subnetCount << "::";
+        ipv6.SetBase(Ipv6Address(subnet.str().c_str()), Ipv6Prefix(64));
+        Ipv6InterfaceContainer ifaces = ipv6.Assign(dev);
+
+
+        // Host: imposta default route verso il router
+        Ptr<Ipv6> ipv6Host = host->GetObject<Ipv6>();
+        Ipv6StaticRoutingHelper ipv6RoutingHelper;
+        Ptr<Ipv6StaticRouting> hostStaticRouting = ipv6RoutingHelper.GetStaticRouting(ipv6Host);
+        // Interfaccia locale dell’host uint32_t hostIfIndex =
+        ipv6Host->GetInterfaceForDevice(dev.Get(0));
+        hostStaticRouting->SetDefaultRoute(ifaces.GetAddress(1,1), ifaces.GetInterfaceIndex(0));
+
+        Ipv6Address hostAddr = ifaces.GetAddress(0, 1); // global address
+        Ipv6Address routerAddr = ifaces.GetAddress(1, 1); // global address
+        ipv6ToHostName[hostAddr] = routerName;
+        hostAddressMap[routerName] = hostAddr;
+
+        std::cout << "Host " << routerName << " indirizzo: " << hostAddr
+                  << ", router indirizzo: " << routerAddr << std::endl;
+
+        p2p.EnablePcap(routerName + "[HOST]", dev.Get(0), true);
+        p2p.EnablePcap(routerName + "[HOST]", dev.Get(1), true);
+
+        subnetCount++;
+    }
+
+    installUdpSinkOnAllNodes(hostMap,9999);
 
     createQRegisterForAllNodes(nodeMap, nameToQRegister);
     assignOutDevices(nodeMap, nameToQRegister);
@@ -550,6 +677,7 @@ main()
                 {
                     qproto->SetAddressToNameMap(ipv6ToHostName);
                     qproto->SetQRegister(nameToQRegister[name]);
+                    qproto->SetHostMap(hostMap);
                 }
             }
         }
@@ -588,9 +716,12 @@ main()
     // installo le app onoff per generare traffico
     auto allDemands = LoadAllMatrices();
     installUdpSinkOnAllNodes(nodeMap, 9999);
+
+    //printAllNodeInterfaces(nodeMap, hostMap);
+
     installOnOffApplicationV6(allDemands[0],
-                              nodeMap,
-                              nodeNameToIpv6,
+                              hostMap,
+                              hostAddressMap,
                               0.248); // uso solo la prima demand
 
 
