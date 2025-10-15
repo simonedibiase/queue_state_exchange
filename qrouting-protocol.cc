@@ -48,9 +48,15 @@ QRoutingProtocol::SetQRegister(std::shared_ptr<std::vector<std::vector<Action>>>
 }
 
 void
-QRoutingProtocol::SetAddressToNameMap(const std::map<Ipv6Address, std::string>& addrToName)
+QRoutingProtocol::SetAddressToNameMap(const std::map<Ipv6Address, std::string>& addrToNameHost)
 {
-    m_addrToName = addrToName;
+    m_addrToNameHost = addrToNameHost;
+}
+
+void
+QRoutingProtocol::SetHostMap(const std::map<std::string, Ptr<Node>>& hostMap)
+{
+    m_hostMap = hostMap;
 }
 
 int
@@ -108,11 +114,11 @@ QRoutingProtocol::RouteOutput(Ptr<Packet> p,
                               Ptr<NetDevice> oif,
                               Socket::SocketErrno& sockerr)
 {
-    //std::cout << "[QROUTING] RouteOutput invoked" << std::endl;
     Ipv6Address dst = header.GetDestination();
-    //std::cout << "[QROUTING] Nodo " << m_nodeName << " ha invocato RouteOutput verso " << dst << std::endl;
+    std::cout << "[QROUTING] Nodo " << m_nodeName << " ha invocato RouteOutput verso " << dst << std::endl;
+    PrintInternalState();
 
-    uint8_t bytes[16];
+        uint8_t bytes[16];
     dst.GetBytes(bytes);
     if (bytes[0] != 0xfd)
     {
@@ -136,10 +142,14 @@ QRoutingProtocol::RouteOutput(Ptr<Packet> p,
     sockerr = Socket::ERROR_NOROUTETOHOST;
 
     // 1) Risolvi nome del nodo di destinazione dalla mappa addr->nome
-    auto it = m_addrToName.find(dst);
-    if (it == m_addrToName.end())
+    auto it = m_addrToNameHost.find(dst);
+
+    if (it == m_addrToNameHost.end())
     {
-        std::cout << "[QROUTING] WARNING OUTPUT: Destination address not found in addr->name map: " << dst << std::endl;
+        for(const auto& pair : m_addrToNameHost) {
+            std::cout << "[QROUTING] address: " << pair.first << " -> " << pair.second << std::endl;
+        }
+        std::cout << "[QROUTING "<< m_nodeName <<"] WARNING OUTPUT: Destination address not found in addr->name map: " << dst << std::endl;
         return nullptr;
     }
 
@@ -155,7 +165,9 @@ QRoutingProtocol::RouteOutput(Ptr<Packet> p,
     Action chosen;
     if (!FindMinActionForDestinationIndex(destIndex, chosen))
     {
-        std::cout << "[QROUTING] WARNING OUTPUT: No valid action found for destIndex " << destIndex<< " (" << destName << ")" << std::endl;
+        /*std::cout << "[QROUTING " << m_nodeName
+                  << "] WARNING OUTPUT: No valid action found for destIndex " << destIndex << " ("
+                  << destName << ")" << std::endl;*/
         return nullptr;
     }
 
@@ -182,7 +194,7 @@ QRoutingProtocol::RouteOutput(Ptr<Packet> p,
                 if (!ifAddr.GetAddress().IsLinkLocal())
                 {
                     route->SetSource(ifAddr.GetAddress());
-                    break; // usa il primo globale disponibile
+                    break; 
                 }
             }
         }
@@ -253,8 +265,8 @@ QRoutingProtocol::RouteInput(Ptr<const Packet> p,
     }
 
     // 3) Risolvi il nome del nodo di destinazione
-    auto it = m_addrToName.find(dst);
-    if (it == m_addrToName.end())
+    auto it = m_addrToNameHost.find(dst);
+    if (it == m_addrToNameHost.end())
     {
         std::cout << "[ROUTEINPUT] WARNING INPUT: Destination address not found: " << dst
                   << std::endl;
@@ -405,8 +417,8 @@ QRoutingProtocol::PrintInternalState() const
     std::cout << std::endl;
 
     // m_addrToName
-    std::cout << "Address → Name map (" << m_addrToName.size() << " entries):" << std::endl;
-    for (const auto& [addr, name] : m_addrToName)
+    std::cout << "Address → Name map (" << m_addrToNameHost.size() << " entries):" << std::endl;
+    for (const auto& [addr, name] : m_addrToNameHost)
     {
         std::cout << "  " << addr << " → " << name << std::endl;
     }

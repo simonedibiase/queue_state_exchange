@@ -22,11 +22,13 @@ QRoutingHelper::QRoutingHelper(
     std::map<std::string, Ptr<Node>>* nodeMap,
     std::map<std::string, std::shared_ptr<std::vector<std::vector<Action>>>>* nameToQRegister,
     const std::vector<std::string>& nodeIds,
-    const std::map<Ipv6Address, std::string>& ipv6ToHostName)
+    const std::map<Ipv6Address, std::string>& ipv6ToHostName,
+    std::map<std::string, Ptr<Node>>* hostMap)
     : m_nodeMap(nodeMap),
       m_nameToQRegister(nameToQRegister),
       m_nodeIds(nodeIds),
-      m_addrToName(ipv6ToHostName) // ✅ assegnamento diretto
+      m_addrToName(ipv6ToHostName),
+      m_hostMap(hostMap)
 {
 }
 
@@ -89,6 +91,7 @@ QRoutingHelper::Copy() const
     helper->m_nameToQRegister = m_nameToQRegister;
     helper->m_nodeIds = m_nodeIds;
     helper->m_addrToName = m_addrToName;
+    helper->m_hostMap = m_hostMap;
     return helper;
 }
 
