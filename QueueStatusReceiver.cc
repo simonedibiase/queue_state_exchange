@@ -140,9 +140,9 @@ QueueStatusReceiver::HandleRead(Ptr<Socket> socket)
                                     queueSize =
                                         qdisc->GetNPackets(); // o GetCurrentSize().GetValue() per
                                                               // byte
-                                    std::cout << "[Receiver] Queue size for action to " << action.idNodeDestination
+                                    /*std::cout << "[Receiver] Queue size for action to " << action.idNodeDestination
                                               << " on device " << action.outDevice->GetIfIndex()
-                                              << " is " << queueSize << std::endl;
+                                              << " is " << queueSize << std::endl;*/
                                 }else{
                                     std::cout << "[Receiver] No QueueDisc found on device "
                                               << action.outDevice->GetIfIndex() << std::endl;
@@ -150,14 +150,14 @@ QueueStatusReceiver::HandleRead(Ptr<Socket> socket)
                             }
                         }
 
-                         std::cout << "[Receiver]  Time:" << now.GetSeconds() << "s " << " lineIndex ="
+                        /* std::cout << "[Receiver]  Time:" << now.GetSeconds() << "s " << " lineIndex ="
                                  << lineIndex << ", minQValue=" << minQValue << ", nameSource=" <<
                                  nameSource
                                   << std::endl;
-                        std::cout << "valore q pirma dell aggiornamento: " << action.q_value << std::endl;
+                        std::cout << "valore q pirma dell aggiornamento: " << action.q_value << std::endl;*/
                         action.q_value = minQValue + queueSize;
-                        std::cout << "valore q dopo l'aggiornamento: " << action.q_value
-                                  << std::endl; 
+                        /*std::cout << "valore q dopo l'aggiornamento: " << action.q_value
+                                  << std::endl; */
                     }
                 }
             }
