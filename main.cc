@@ -15,6 +15,7 @@
 #include "csv_logger.h"
 #include "dag_database.h"
 #include "flow_demand_reader.h"
+#include "qrouting-helper.h"
 
 #include "ns3/applications-module.h"
 #include "ns3/callback.h"
@@ -75,7 +76,7 @@ installReceiverExchangeStateAppOnAllNodes(
         receiverApp->SetQRegister(q_register);
         node->AddApplication(receiverApp);
         receiverApp->SetStartTime(Seconds(1.0));
-        receiverApp->SetStopTime(Seconds(10.0));
+        receiverApp->SetStopTime(Seconds(30.0));
     }
 }
 
@@ -96,45 +97,13 @@ installBidirectionalQueueStatusSenders(
     firstWaySender->Setup(addrA, addrB, nameA, nameB, q_registerA, indexB);
     nodeA->AddApplication(firstWaySender);
     firstWaySender->SetStartTime(Seconds(2.0));
-    firstWaySender->SetStopTime(Seconds(10.0));
+    firstWaySender->SetStopTime(Seconds(30.0));
 
     Ptr<QueueStatusApp> secondWaySender = CreateObject<QueueStatusApp>();
     secondWaySender->Setup(addrB, addrA, nameB, nameA, q_registerB, indexA);
     nodeB->AddApplication(secondWaySender);
     secondWaySender->SetStartTime(Seconds(2.0));
-    secondWaySender->SetStopTime(Seconds(10.0));
-}
-
-void
-installOnOffApplication(std::vector<FlowDemand>& demands,
-                        std::map<std::string, Ptr<Node>>& nodeMap,
-                        std::map<std::string, Ipv4Address>& nodeNameToIpv4,
-                        double scale,
-                        double startTime,
-                        double stopTime)
-{
-    for (const auto& flow : demands)
-    {
-        Ptr<Node> srcNode = nodeMap.at(flow.src);
-        Ipv4Address dstAddr = nodeNameToIpv4.at(flow.dst);
-
-        double scaledRate = flow.rateMbps * scale;
-        std::ostringstream rateStr;
-        rateStr << scaledRate << "Mbps";
-
-        OnOffHelper onoff("ns3::UdpSocketFactory", InetSocketAddress(dstAddr, 9));
-        onoff.SetAttribute("DataRate", StringValue(rateStr.str()));
-        onoff.SetAttribute("PacketSize", UintegerValue(1024));
-        onoff.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
-        onoff.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0]"));
-
-        ApplicationContainer app = onoff.Install(srcNode);
-        app.Start(Seconds(startTime));
-        app.Stop(Seconds(stopTime)); // o quanto vuoi far durare
-
-        // std::cout << "[TRAFFICO] " << flow.src << " -> " << flow.dst
-        //         << ", indirizzo dst = " << dstAddr << ", rate = " << rateStr.str() << std::endl;
-    }
+    secondWaySender->SetStopTime(Seconds(30.0));
 }
 
 int
@@ -172,13 +141,13 @@ installOnOffApplicationV6(std::vector<FlowDemand>& demands,
 
         OnOffHelper onoff("ns3::UdpSocketFactory", Inet6SocketAddress(dstAddr, port));
         onoff.SetAttribute("DataRate", StringValue(rateStr.str()));
-        onoff.SetAttribute("PacketSize", UintegerValue(2048));
+        onoff.SetAttribute("PacketSize", UintegerValue(1024));
         onoff.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
         onoff.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0]"));
 
         ApplicationContainer app = onoff.Install(srcNode);
         app.Start(Seconds(2.0));
-        app.Stop(Seconds(10.0));
+        app.Stop(Seconds(10.0)); 
 
         // std::cout << "[TRAFFICO] " << flow.src << " -> " << flow.dst
         //          << ", indirizzo dst = " << dstAddr << ", rate = " << rateStr.str() << std::endl;
@@ -342,6 +311,21 @@ assignOutDevices(
     }
 }
 
+void
+installUdpSinkOnAllNodes(std::map<std::string, Ptr<Node>>& nodeMap, uint16_t port)
+{
+    for (auto& [name, node] : nodeMap)
+    {
+        // Il PacketSink ascolta su tutte le interfacce (:: è l'indirizzo "any" IPv6)
+        Inet6SocketAddress local = Inet6SocketAddress(Ipv6Address::GetAny(), port);
+        PacketSinkHelper sinkHelper("ns3::UdpSocketFactory", local);
+
+        ApplicationContainer sinkApp = sinkHelper.Install(node);
+        sinkApp.Start(Seconds(1.0));
+        sinkApp.Stop(Seconds(30.0));
+    }
+}
+
 int
 main()
 {
@@ -362,6 +346,7 @@ main()
 
     // memorizzo gli Ipv6 dei nodi per la simulazione del traffico
     std::map<std::string, Ipv6Address> nodeNameToIpv6;
+    std::map<Ipv6Address, std::string> ipv6ToHostName;
 
     // Lisa dei nomi dei nodi (dal file XML su abilene Network)
     std::vector<std::string> nodeIds = {"ATLAM5",
@@ -384,18 +369,22 @@ main()
         allNodes.Add(node);
     }
 
+    std::map<std::string, std::shared_ptr<std::vector<std::vector<Action>>>> nameToQRegister;
+
+    QRoutingHelper qRoutingHelper(&nodeMap, &nameToQRegister, nodeIds, ipv6ToHostName);
+
     RipNgHelper ripngRouting;
     Ipv6ListRoutingHelper listRH;
-    listRH.Add(ripngRouting, 10);
+    listRH.Add(qRoutingHelper, 100);
+    //listRH.Add(ripngRouting, 10);
 
     InternetStackHelper internet;
     internet.SetRoutingHelper(listRH);
     internet.Install(allNodes);
 
     std::vector<Link> links;
-
-    // link originali
-    /*
+/*
+    // link originali    
     // Aggiungi tutti i link con valori scalati
     links.push_back({"ATLAng", "ATLAM5", 9.92}); // 99.2Mbps
     links.push_back({"HSTNng", "ATLAng", 9.92});
@@ -463,7 +452,7 @@ main()
         //
         Ipv6AddressHelper ipv6;
         std::ostringstream prefix;
-        prefix << "2001:db8:" << std::hex << subnetCount << "::";
+        prefix << "fd00:" << std::hex << subnetCount << "::"; // prefisso ULA, non riservato
         ipv6.SetBase(Ipv6Address(prefix.str().c_str()), Ipv6Prefix(64));
         Ipv6InterfaceContainer ifaces = ipv6.Assign(devices);
         linkToIfaces[{link.source, link.target}] = ifaces;
@@ -480,6 +469,9 @@ main()
 
         Ipv6Address addr1 = ifaces.GetAddress(0, 1);
         Ipv6Address addr2 = ifaces.GetAddress(1, 1);
+
+        ipv6ToHostName[addr1] = link.source;
+        ipv6ToHostName[addr2] = link.target;
 
         // Salva solo se non è già presente
         if (nodeNameToIpv6.find(link.source) == nodeNameToIpv6.end())
@@ -499,7 +491,9 @@ main()
         // adattamento dell'meccanismo di notifica dello stato della coda
         // sull'abilene network
 
-        
+        // Abilita PCAP per entrambi i dispositivi del link
+        p2p.EnablePcap(link.source + "-" + link.target, devices.Get(0), true);
+        p2p.EnablePcap(link.source + "-" + link.target, devices.Get(1), true);
 
         std::cout << "[SENDER INSTALLATO] " << link.source << " → " << link.target
                   << "\n\tSrc: " << ifaces.GetAddress(0, 1)
@@ -511,7 +505,6 @@ main()
         subnetCount++;
     }
 
-    std::map<std::string, std::shared_ptr<std::vector<std::vector<Action>>>> nameToQRegister;
     createQRegisterForAllNodes(nodeMap, nameToQRegister);
     assignOutDevices(nodeMap, nameToQRegister);
     printQRegisters(nameToQRegister, nodeMap);
@@ -539,6 +532,27 @@ main()
                                                nameToQRegister[link.target],
                                                returnIndexOfNode(nodeIds, link.source),
                                                returnIndexOfNode(nodeIds, link.target));
+    }
+
+    for (const auto& [name, node] : nodeMap)
+    {
+        Ptr<Ipv6> ipv6 = node->GetObject<Ipv6>();
+        Ptr<Ipv6RoutingProtocol> proto = ipv6->GetRoutingProtocol();
+        Ptr<Ipv6ListRouting> list = DynamicCast<Ipv6ListRouting>(proto);
+        if (list)
+        {
+            for (uint32_t i = 0; i < list->GetNRoutingProtocols(); ++i)
+            {
+                int16_t priority;
+                Ptr<Ipv6RoutingProtocol> subProto = list->GetRoutingProtocol(i, priority);
+                Ptr<QRoutingProtocol> qproto = DynamicCast<QRoutingProtocol>(subProto);
+                if (qproto)
+                {
+                    qproto->SetAddressToNameMap(ipv6ToHostName);
+                    qproto->SetQRegister(nameToQRegister[name]);
+                }
+            }
+        }
     }
 
     // installo i receiver per ottenere e far salvare le info sulle code
@@ -573,14 +587,14 @@ main()
 
     // installo le app onoff per generare traffico
     auto allDemands = LoadAllMatrices();
+    installUdpSinkOnAllNodes(nodeMap, 9999);
     installOnOffApplicationV6(allDemands[0],
                               nodeMap,
                               nodeNameToIpv6,
                               0.248); // uso solo la prima demand
 
-    // InstallUdpReceiverOnSingleNode(allHosts.Get(4), ipv4ToHostName);
 
-    Simulator::Stop(Seconds(10.0));
+    Simulator::Stop(Seconds(30.0));
     Simulator::Run();
     Simulator::Destroy();
 
