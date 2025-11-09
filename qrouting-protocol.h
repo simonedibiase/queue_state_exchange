@@ -27,6 +27,7 @@ class QRoutingProtocol : public Ipv6RoutingProtocol
     void SetNodeIdList(const std::vector<std::string>& nodeIds);
     void SetQRegister(std::shared_ptr<std::vector<std::vector<Action>>> qreg);
     void SetAddressToNameMap(const std::map<Ipv6Address, std::string>& addrToName);
+    void SetHostMap(const std::map<std::string, Ptr<Node>>& hostMap);
 
     // Interfaccia Ipv6RoutingProtocol
     virtual Ptr<Ipv6Route> RouteOutput(Ptr<Packet> p,
@@ -97,6 +98,7 @@ class QRoutingProtocol : public Ipv6RoutingProtocol
     std::vector<std::string> m_nodeIds;
     std::shared_ptr<std::vector<std::vector<Action>>> m_qregister;
     std::map<Ipv6Address, std::string> m_addrToName;
+    std::map<std::string, Ptr<Node>> m_hostMap;
 
     int IndexOfNodeNameInNodeIds(const std::string& name) const;
     bool FindMinActionForDestinationIndex(int destIndex, Action& outAction) const;

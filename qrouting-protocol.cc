@@ -48,9 +48,15 @@ QRoutingProtocol::SetQRegister(std::shared_ptr<std::vector<std::vector<Action>>>
 }
 
 void
-QRoutingProtocol::SetAddressToNameMap(const std::map<Ipv6Address, std::string>& addrToName)
+QRoutingProtocol::SetAddressToNameMap(const std::map<Ipv6Address, std::string>& addrToNameHost)
 {
-    m_addrToName = addrToName;
+    m_addrToName = addrToNameHost;
+}
+
+void
+QRoutingProtocol::SetHostMap(const std::map<std::string, Ptr<Node>>& hostMap)
+{
+    m_hostMap = hostMap;
 }
 
 int
@@ -98,6 +104,24 @@ QRoutingProtocol::FindMinActionForDestinationIndex(int destIndex, Action& outAct
                 found = true;
             }
         }
+        else
+        {
+            // viene eseguito quando a.outDevice == nullptr
+            // ciò significa che lo deve consegnare all'host direttamente collegato
+
+            uint32_t lastIfIndex = m_ipv6->GetNInterfaces() - 1;
+            Ptr<NetDevice> lastDev = m_ipv6->GetNetDevice(lastIfIndex);
+
+            if (lastDev)
+            {
+                outAction.outDevice = lastDev;
+                outAction.q_value = 0; // opzionale, puoi impostare un valore neutro
+                found = true;
+
+                std::cout << "[QROUTING] pacchetto destinato all'host collegato direttamente"
+                          << std::endl;
+            }
+        }
     }
     return found;
 }
@@ -108,9 +132,9 @@ QRoutingProtocol::RouteOutput(Ptr<Packet> p,
                               Ptr<NetDevice> oif,
                               Socket::SocketErrno& sockerr)
 {
-    //std::cout << "[QROUTING] RouteOutput invoked" << std::endl;
     Ipv6Address dst = header.GetDestination();
-    //std::cout << "[QROUTING] Nodo " << m_nodeName << " ha invocato RouteOutput verso " << dst << std::endl;
+    // std::cout << "[QROUTING] Nodo " << m_nodeName << " ha invocato RouteOutput verso " << dst <<
+    // std::endl; PrintInternalState();
 
     uint8_t bytes[16];
     dst.GetBytes(bytes);
@@ -127,9 +151,9 @@ QRoutingProtocol::RouteOutput(Ptr<Packet> p,
 
         if (ipv6Header.GetNextHeader() == 200)
         {
-            //std::cout << "[ROUTEOUTPUT] Ignoro pacchetto con NextHeader = 200 (QueueStatusApp)"
-            //          << std::endl;
-            return Ptr<Ipv6Route>(nullptr); // lascia gestire ad altri protocolli 
+            // std::cout << "[ROUTEOUTPUT] Ignoro pacchetto con NextHeader = 200 (QueueStatusApp)"
+            //           << std::endl;
+            return Ptr<Ipv6Route>(nullptr); // lascia gestire ad altri protocolli
         }
     }
     // Imposta default errore
@@ -137,9 +161,11 @@ QRoutingProtocol::RouteOutput(Ptr<Packet> p,
 
     // 1) Risolvi nome del nodo di destinazione dalla mappa addr->nome
     auto it = m_addrToName.find(dst);
+
     if (it == m_addrToName.end())
     {
-        std::cout << "[QROUTING] WARNING OUTPUT: Destination address not found in addr->name map: " << dst << std::endl;
+        // std::cout << "[QROUTING "<< m_nodeName <<"] WARNING OUTPUT: Destination address not found
+        // in addr->name map: " << dst << std::endl;
         return nullptr;
     }
 
@@ -147,7 +173,8 @@ QRoutingProtocol::RouteOutput(Ptr<Packet> p,
     int destIndex = IndexOfNodeNameInNodeIds(destName);
     if (destIndex < 0)
     {
-        std::cout << "[QROUTING] WARNING OUTPUT: Destination name not found in nodeIds: "<< destName << std::endl;
+        std::cout << "[QROUTING] WARNING OUTPUT: Destination name not found in nodeIds: "
+                  << destName << std::endl;
         return nullptr;
     }
 
@@ -155,7 +182,9 @@ QRoutingProtocol::RouteOutput(Ptr<Packet> p,
     Action chosen;
     if (!FindMinActionForDestinationIndex(destIndex, chosen))
     {
-        std::cout << "[QROUTING] WARNING OUTPUT: No valid action found for destIndex " << destIndex<< " (" << destName << ")" << std::endl;
+        /*std::cout << "[QROUTING " << m_nodeName
+                  << "] WARNING OUTPUT: No valid action found for destIndex " << destIndex << " ("
+                  << destName << ")" << std::endl;*/
         return nullptr;
     }
 
@@ -182,13 +211,14 @@ QRoutingProtocol::RouteOutput(Ptr<Packet> p,
                 if (!ifAddr.GetAddress().IsLinkLocal())
                 {
                     route->SetSource(ifAddr.GetAddress());
-                    break; // usa il primo globale disponibile
+                    break;
                 }
             }
         }
     }
 
-    //std::cout << "[QROUTING] RouteOutput: chosen interface " << chosen.outDevice->GetIfIndex()<< " per destinazione " << dst << std::endl;
+    // std::cout << "[QROUTING] RouteOutput: chosen interface " << chosen.outDevice->GetIfIndex()<<
+    // " per destinazione " << dst << std::endl;
 
     sockerr = Socket::ERROR_NOTERROR;
     return route;
@@ -203,11 +233,13 @@ QRoutingProtocol::RouteInput(Ptr<const Packet> p,
                              const LocalDeliverCallback& lcb,
                              const ErrorCallback& ecb)
 {
-    //PrintInternalState();
+    // PrintInternalState();
     Ipv6Address dst = header.GetDestination();
     Ipv6Address src = header.GetSource();
-    //std::cout << "[ROUTEINPUT] RouteInput invoked. Nodo " << m_nodeName
-     //         << " ha ricevuto pacchetto partito da:" << src <<" verso:"<< dst << std::endl;
+    std::cout << "[ROUTEINPUT] RouteInput invoked. Nodo " << m_nodeName
+              << " ha ricevuto pacchetto partito da:" << src << " verso:" << dst << std::endl;
+
+    // PrintInternalState();
 
     // 1) Filtra pacchetti speciali (NextHeader = 200)
 
@@ -227,8 +259,8 @@ QRoutingProtocol::RouteInput(Ptr<const Packet> p,
 
         if (ipv6Header.GetNextHeader() == 200)
         {
-            //std::cout << "[ROUTEINPUT] Ignoro pacchetto con NextHeader = 200 (QueueStatusApp)"
-            //          << std::endl;
+            // std::cout << "[ROUTEINPUT] Ignoro pacchetto con NextHeader = 200 (QueueStatusApp)"
+            //           << std::endl;
             return false; // lascia gestire ad altri protocolli
         }
     }
@@ -308,10 +340,9 @@ QRoutingProtocol::RouteInput(Ptr<const Packet> p,
         }
     }
 
-   
-
     // 6) Chiama callback di forwarding unicast
-    if (!ucb.IsNull()){
+    if (!ucb.IsNull())
+    {
         ucb(idev, route, p, header);
         /*std::cout << "[ROUTEINPUT] forwarding: src=" << src << " dst=" << dst
                   << " incomingIf=" << idev->GetIfIndex()
@@ -319,10 +350,12 @@ QRoutingProtocol::RouteInput(Ptr<const Packet> p,
                   << " q=" << chosen.q_value << std::endl;
         std::cout << "[ROUTEINPUT] RouteInput: forwarding pacchetto tramite interfaccia "
                   << chosen.outDevice->GetIfIndex() << " verso " << dst << std::endl;*/
-    }else{
+    }
+    else
+    {
         std::cout << "[ROUTEINPUT] WARNING INPUT: non è riuscito ad eseguire ucb, in quanto nullo"
                   << std::endl;
-        }
+    }
 
     return true; // pacchetto gestito dal protocollo
 }
