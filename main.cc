@@ -341,6 +341,9 @@ main()
     std::map<std::string, Ptr<Node>> nodeMap;
     NodeContainer allNodes;
 
+    std::map<std::string, Ptr<Node>> hostMap;
+    NodeContainer allHosts;
+
     // memorizzo gli Ipv4 dei nodi per la simulazione del traffico
     // std::map<std::string, Ipv4Address> nodeNameToIpv4;
 
@@ -371,7 +374,7 @@ main()
 
     std::map<std::string, std::shared_ptr<std::vector<std::vector<Action>>>> nameToQRegister;
 
-    QRoutingHelper qRoutingHelper(&nodeMap, &nameToQRegister, nodeIds, ipv6ToHostName);
+    QRoutingHelper qRoutingHelper(&nodeMap, &nameToQRegister, nodeIds, ipv6ToHostName, &hostMap);
 
     RipNgHelper ripngRouting;
     Ipv6ListRoutingHelper listRH;
@@ -383,7 +386,7 @@ main()
     internet.Install(allNodes);
 
     std::vector<Link> links;
-/*
+
     // link originali    
     // Aggiungi tutti i link con valori scalati
     links.push_back({"ATLAng", "ATLAM5", 9.92}); // 99.2Mbps
@@ -401,8 +404,8 @@ main()
     links.push_back({"SNVAng", "LOSAng", 9.92});
     links.push_back({"WASHng", "NYCMng", 9.92});
     links.push_back({"STTLng", "SNVAng", 9.92});
-*/
 
+/*
     double linkScale = 0.0125;
 
     // usa questi per vedere dei risultati
@@ -422,7 +425,7 @@ main()
     links.push_back({"SNVAng", "LOSAng", 1000 * linkScale}); // pk
     links.push_back({"WASHng", "NYCMng", 4700 * linkScale}); // ok
     links.push_back({"STTLng", "SNVAng", 500 * linkScale});  // ok
-
+*/
     // contenitore di tutti i netDevice della rete
     NetDeviceContainer allDevices;
 
@@ -505,6 +508,80 @@ main()
         subnetCount++;
     }
 
+    std::map<std::string, Ipv6Address> hostAddressMap;
+
+    InternetStackHelper hostStack;
+    hostStack.SetIpv6StackInstall(true);
+    hostStack.SetIpv4StackInstall(false);
+    NetDeviceContainer allHostsDevs;
+
+    for (const auto& [routerName, routerNode] : nodeMap)
+    {
+        // InternetStackHelper internet2;
+
+        // Creo gli host
+        Ptr<Node> host = CreateObject<Node>();
+        hostMap[routerName] = host;
+        hostStack.Install(host);
+
+        NodeContainer hostRouter;
+        hostRouter.Add(host);
+        allHosts.Add(host);
+        hostRouter.Add(routerNode);
+
+        // Link host <-> router
+        PointToPointHelper p2p;
+        p2p.SetDeviceAttribute("DataRate", StringValue("125Mbps"));
+        p2p.SetChannelAttribute("Delay", StringValue("1ms"));
+
+        NetDeviceContainer dev = p2p.Install(hostRouter);
+
+        allHostsDevs.Add(dev.Get(0));
+        allHostsDevs.Add(dev.Get(1));
+
+        // assegnazione ipv4
+        Ipv6AddressHelper ipv6;
+        std::ostringstream subnet;
+        subnet << "fd00:" << std::hex << subnetCount << "::";
+        ipv6.SetBase(Ipv6Address(subnet.str().c_str()), Ipv6Prefix(64));
+        Ipv6InterfaceContainer ifaces = ipv6.Assign(dev);
+
+        // Host: imposta default route verso il router
+        Ptr<Ipv6> ipv6Host = host->GetObject<Ipv6>();
+        Ipv6StaticRoutingHelper ipv6RoutingHelper;
+        Ptr<Ipv6StaticRouting> hostStaticRouting = ipv6RoutingHelper.GetStaticRouting(ipv6Host);
+        // Interfaccia locale dell’host uint32_t hostIfIndex =
+        ipv6Host->GetInterfaceForDevice(dev.Get(0));
+        hostStaticRouting->SetDefaultRoute(ifaces.GetAddress(1, 1), ifaces.GetInterfaceIndex(0));
+
+        Ipv6Address hostAddr = ifaces.GetAddress(0, 1);   // global address
+        Ipv6Address routerAddr = ifaces.GetAddress(1, 1); // global address
+        ipv6ToHostName[hostAddr] = routerName;
+        hostAddressMap[routerName] = hostAddr;
+
+        ifaces.SetForwarding(1, true);
+        // ifaces.SetForwarding(0, true);
+
+        std::cout << "Host " << routerName << " indirizzo: " << hostAddr
+                  << ", router indirizzo: " << routerAddr << std::endl;
+
+        p2p.EnablePcap(routerName + "[HOST]", dev.Get(0), true);
+        p2p.EnablePcap(routerName + "[HOST]", dev.Get(1), true);
+
+        subnetCount++;
+    }
+
+    installUdpSinkOnAllNodes(hostMap, 9999);
+
+
+
+
+
+
+
+
+
+
     createQRegisterForAllNodes(nodeMap, nameToQRegister);
     assignOutDevices(nodeMap, nameToQRegister);
     printQRegisters(nameToQRegister, nodeMap);
@@ -550,6 +627,7 @@ main()
                 {
                     qproto->SetAddressToNameMap(ipv6ToHostName);
                     qproto->SetQRegister(nameToQRegister[name]);
+                    qproto->SetHostMap(hostMap);
                 }
             }
         }
@@ -589,8 +667,8 @@ main()
     auto allDemands = LoadAllMatrices();
     installUdpSinkOnAllNodes(nodeMap, 9999);
     installOnOffApplicationV6(allDemands[0],
-                              nodeMap,
-                              nodeNameToIpv6,
+                              hostMap,
+                              hostAddressMap,
                               0.248); // uso solo la prima demand
 
 
