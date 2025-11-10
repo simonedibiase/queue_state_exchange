@@ -6,8 +6,7 @@
 // //
 // //
 // // #link = 15
-// //
-// //
+
 
 #include "QueueStatusReceiver.h"
 #include "QueueStatusSender.h"
@@ -121,7 +120,6 @@ returnIndexOfNode(std::vector<std::string> nodeIds, std::string nodeName)
     return -1; // nodo non trovato
 }
 
-// Simulazione del traffico a partire dalla matrice dinamica - Ipv6
 void
 installOnOffApplicationV6(std::vector<FlowDemand>& demands,
                           std::map<std::string, Ptr<Node>>& hostMap,
@@ -148,9 +146,6 @@ installOnOffApplicationV6(std::vector<FlowDemand>& demands,
         ApplicationContainer app = onoff.Install(srcNode);
         app.Start(Seconds(2.0));
         app.Stop(Seconds(10.0)); 
-
-        // std::cout << "[TRAFFICO] " << flow.src << " -> " << flow.dst
-        //          << ", indirizzo dst = " << dstAddr << ", rate = " << rateStr.str() << std::endl;
     }
 }
 
@@ -338,14 +333,11 @@ main()
     // Creazione della topologia Abilene Networl
 
     // Mappa degli ID nodo
-    std::map<std::string, Ptr<Node>> nodeMap;
-    NodeContainer allNodes;
+    std::map<std::string, Ptr<Node>> routerMap;
+    NodeContainer allRouters;
 
     std::map<std::string, Ptr<Node>> hostMap;
     NodeContainer allHosts;
-
-    // memorizzo gli Ipv4 dei nodi per la simulazione del traffico
-    // std::map<std::string, Ipv4Address> nodeNameToIpv4;
 
     // memorizzo gli Ipv6 dei nodi per la simulazione del traffico
     std::map<std::string, Ipv6Address> nodeNameToIpv6;
@@ -368,13 +360,13 @@ main()
     for (const auto& id : nodeIds)
     {
         Ptr<Node> node = CreateObject<Node>();
-        nodeMap[id] = node;
-        allNodes.Add(node);
+        routerMap[id] = node;
+        allRouters.Add(node);
     }
 
     std::map<std::string, std::shared_ptr<std::vector<std::vector<Action>>>> nameToQRegister;
 
-    QRoutingHelper qRoutingHelper(&nodeMap, &nameToQRegister, nodeIds, ipv6ToHostName, &hostMap);
+    QRoutingHelper qRoutingHelper(&routerMap, &nameToQRegister, nodeIds, ipv6ToHostName, &hostMap);
 
     RipNgHelper ripngRouting;
     Ipv6ListRoutingHelper listRH;
@@ -383,7 +375,7 @@ main()
 
     InternetStackHelper internet;
     internet.SetRoutingHelper(listRH);
-    internet.Install(allNodes);
+    internet.Install(allRouters);
 
     std::vector<Link> links;
 
@@ -405,27 +397,6 @@ main()
     links.push_back({"WASHng", "NYCMng", 9.92});
     links.push_back({"STTLng", "SNVAng", 9.92});
 
-/*
-    double linkScale = 0.0125;
-
-    // usa questi per vedere dei risultati
-    links.push_back({"ATLAng", "ATLAM5", 120 * linkScale});  // ok
-    links.push_back({"HSTNng", "ATLAng", 7900 * linkScale}); // ok
-    links.push_back({"IPLSng", "ATLAng", 5000 * linkScale}); // ok
-    links.push_back({"WASHng", "ATLAng", 8800 * linkScale}); // ok
-    links.push_back({"IPLSng", "CHINng", 8500 * linkScale}); // ok
-    links.push_back({"NYCMng", "CHINng", 5000 * linkScale}); // ok
-    links.push_back({"KSCYng", "DNVRng", 4300 * linkScale}); // ok ma forse più basso per KSCY
-    links.push_back({"SNVAng", "DNVRng", 1150 * linkScale}); // ok ma forse poco per SNVA
-    links.push_back({"STTLng", "DNVRng", 2200 * linkScale}); // ok
-    links.push_back({"KSCYng", "HSTNng", 2350 * linkScale}); // ok ma forse poco per KSCY
-    links.push_back({"LOSAng", "HSTNng", 6100 * linkScale}); // ok ma 0 per HST
-    links.push_back(
-        {"KSCYng", "IPLSng", 3800 * linkScale}); // ok ma devo aumentare il carico d'invio di IPLS
-    links.push_back({"SNVAng", "LOSAng", 1000 * linkScale}); // pk
-    links.push_back({"WASHng", "NYCMng", 4700 * linkScale}); // ok
-    links.push_back({"STTLng", "SNVAng", 500 * linkScale});  // ok
-*/
     // contenitore di tutti i netDevice della rete
     NetDeviceContainer allDevices;
 
@@ -441,10 +412,10 @@ main()
         p2p.SetDeviceAttribute("DataRate", StringValue(rate.str()));
         p2p.SetChannelAttribute("Delay", StringValue("1ms"));
 
-        auto devices = p2p.Install(nodeMap[link.source], nodeMap[link.target]);
+        auto devices = p2p.Install(routerMap[link.source], routerMap[link.target]);
 
-        std::cout << "installazione collegamentr tra " << nodeMap[link.source]->GetId() << " e "
-                  << nodeMap[link.target]->GetId() << std::endl;
+        std::cout << "installazione collegamentr tra " << routerMap[link.source]->GetId() << " e "
+                  << routerMap[link.target]->GetId() << std::endl;
 
         allDevices.Add(devices);
 
@@ -463,12 +434,10 @@ main()
         // Attivo il forwarding IPv6
         ifaces.SetForwarding(0, true);
         ifaces.SetForwarding(1, true);
-        // ifaces.SetDefaultRouteInAllNodes(0);
-        // ifaces.SetDefaultRouteInAllNodes(1);
 
         // devo salvare gli indirizzi Ipv6 per la generazione del traffico
-        Ptr<Node> node1 = nodeMap[link.source];
-        Ptr<Node> node2 = nodeMap[link.target];
+        Ptr<Node> node1 = routerMap[link.source];
+        Ptr<Node> node2 = routerMap[link.target];
 
         Ipv6Address addr1 = ifaces.GetAddress(0, 1);
         Ipv6Address addr2 = ifaces.GetAddress(1, 1);
@@ -515,10 +484,8 @@ main()
     hostStack.SetIpv4StackInstall(false);
     NetDeviceContainer allHostsDevs;
 
-    for (const auto& [routerName, routerNode] : nodeMap)
+    for (const auto& [routerName, routerNode] : routerMap)
     {
-        // InternetStackHelper internet2;
-
         // Creo gli host
         Ptr<Node> host = CreateObject<Node>();
         hostMap[routerName] = host;
@@ -574,17 +541,9 @@ main()
     installUdpSinkOnAllNodes(hostMap, 9999);
 
 
-
-
-
-
-
-
-
-
-    createQRegisterForAllNodes(nodeMap, nameToQRegister);
-    assignOutDevices(nodeMap, nameToQRegister);
-    printQRegisters(nameToQRegister, nodeMap);
+    createQRegisterForAllNodes(routerMap, nameToQRegister);
+    assignOutDevices(routerMap, nameToQRegister);
+    printQRegisters(nameToQRegister, routerMap);
 
     for (const auto& link : links)
     {
@@ -601,8 +560,8 @@ main()
 
         installBidirectionalQueueStatusSenders(ifaces.GetAddress(0, 1),
                                                ifaces.GetAddress(1, 1),
-                                               nodeMap[link.source],
-                                               nodeMap[link.target],
+                                               routerMap[link.source],
+                                               routerMap[link.target],
                                                link.source,
                                                link.target,
                                                nameToQRegister[link.source],
@@ -611,7 +570,7 @@ main()
                                                returnIndexOfNode(nodeIds, link.target));
     }
 
-    for (const auto& [name, node] : nodeMap)
+    for (const auto& [name, node] : routerMap)
     {
         Ptr<Ipv6> ipv6 = node->GetObject<Ipv6>();
         Ptr<Ipv6RoutingProtocol> proto = ipv6->GetRoutingProtocol();
@@ -634,7 +593,7 @@ main()
     }
 
     // installo i receiver per ottenere e far salvare le info sulle code
-    installReceiverExchangeStateAppOnAllNodes(nodeMap, nameToQRegister);
+    installReceiverExchangeStateAppOnAllNodes(routerMap, nameToQRegister);
 
     // set della disciplina delle code
     TrafficControlHelper tch;
@@ -645,27 +604,10 @@ main()
     tch.AddInternalQueues(handle, 3, "ns3::DropTailQueue", "MaxSize", StringValue("500000p"));
     QueueDiscContainer qdiscs = tch.Install(allDevices);
 
-    // matrici di traffico per testing
-    /*
-        std::vector<FlowDemand> demands = {
-            {"ATLAM5", "ATLAng", 100},
-            {"ATLAM5", "HSTNng", 1100},
-            {"ATLAng", "ATLAM5", 900},
-            {"ATLAM5", "CHINng", 100},
-            {"ATLAM5", "DNVRng", 10},
-            {"ATLAM5", "LOSAng", 10},
-            {"ATLAM5", "IPLSng", 100},
-            {"ATLAM5", "NYCMng", 40},
-            {"ATLAM5", "SNVAng", 32},
-            {"ATLAM5", "STTLng", 70},
-            {"ATLAM5", "WASHng", 30},
-            //{"ATLAM5", "", 1000},
-
-        };*/
 
     // installo le app onoff per generare traffico
     auto allDemands = LoadAllMatrices();
-    installUdpSinkOnAllNodes(nodeMap, 9999);
+    installUdpSinkOnAllNodes(routerMap, 9999);
     installOnOffApplicationV6(allDemands[0],
                               hostMap,
                               hostAddressMap,
