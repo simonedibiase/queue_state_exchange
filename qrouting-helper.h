@@ -27,7 +27,8 @@ class QRoutingHelper : public Ipv6RoutingHelper
         std::map<std::string, Ptr<Node>>* nodeMap,
         std::map<std::string, std::shared_ptr<std::vector<std::vector<Action>>>>* nameToQRegister,
         const std::vector<std::string>& nodeIds,
-        const std::map<Ipv6Address, std::string>& ipv6ToHostName);
+        const std::map<Ipv6Address, std::string>& ipv6ToHostName,
+        std::map<std::string, Ptr<Node>>* hostMap);
     // Ipv6RoutingHelper API
     virtual Ptr<Ipv6RoutingProtocol> Create(Ptr<Node> node) const override;
     virtual Ipv6RoutingHelper* Copy() const override;
@@ -39,6 +40,7 @@ class QRoutingHelper : public Ipv6RoutingHelper
     std::map<std::string, std::shared_ptr<std::vector<std::vector<Action>>>>* m_nameToQRegister;
     std::vector<std::string> m_nodeIds;
     std::map<Ipv6Address, std::string> m_addrToName;
+    std::map<std::string, Ptr<Node>>* m_hostMap;
 };
 
 } // namespace ns3
