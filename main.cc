@@ -51,6 +51,7 @@
 #include <vector>
 
 std::ofstream csvFile;
+std::ofstream queueLengthCsv;
 using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE("NeighborsQueueStatusInRealScenario");
@@ -319,6 +320,59 @@ installUdpSinkOnAllNodes(std::map<std::string, Ptr<Node>>& nodeMap, uint16_t por
         sinkApp.Start(Seconds(1.0));
         sinkApp.Stop(Seconds(30.0));
     }
+}
+
+void
+RecordQueueLengths(std::map<std::string, Ptr<Node>>& nodeMap,
+                   NetDeviceContainer& allDevices,
+                   QueueDiscContainer& qdiscs,
+                   double interval)
+{
+    double currentTime = Simulator::Now().GetSeconds();
+
+    for (uint32_t i = 0; i < allDevices.GetN(); ++i)
+    {
+        Ptr<NetDevice> dev = allDevices.Get(i);
+        Ptr<QueueDisc> qdisc = qdiscs.Get(i);
+        Ptr<Node> node = dev->GetNode();
+
+        // trova il nome del nodo
+        std::string nodeName;
+        for (const auto& [name, n] : nodeMap)
+        {
+            if (n == node)
+            {
+                nodeName = name;
+                break;
+            }
+        }
+
+        uint32_t queueLength = 0;
+
+        if (qdisc)
+        {
+            // Come in QueueStatusReceiver → legge la dimensione totale del QueueDisc
+            queueLength = qdisc->GetNPackets();
+        }
+        else
+        {
+            // Fallback: nel caso non ci sia un QueueDisc (es. TC disabilitato)
+            Ptr<QueueBase> queue = DynamicCast<QueueBase>(dev->GetObject<QueueBase>());
+            if (queue)
+                queueLength = queue->GetNPackets();
+        }
+
+        queueLengthCsv << currentTime << ",   " << nodeName << "," << i << "," << queueLength
+                       << "\n";
+    }
+    queueLengthCsv << "---------------------------------\n";
+
+    Simulator::Schedule(Seconds(interval),
+                        &RecordQueueLengths,
+                        nodeMap,
+                        allDevices,
+                        qdiscs,
+                        interval);
 }
 
 int
@@ -604,6 +658,18 @@ main()
     tch.AddInternalQueues(handle, 3, "ns3::DropTailQueue", "MaxSize", StringValue("500000p"));
     QueueDiscContainer qdiscs = tch.Install(allDevices);
 
+    queueLengthCsv.open("queue_lengths.csv", std::ios::out);
+    if (!queueLengthCsv.is_open())
+    {
+        std::cerr << "Errore: impossibile aprire queue_lengths.csv\n";
+    }
+    else
+    {
+        // Intestazione: Time, NodeName, DeviceIndex, QueueLength
+        queueLengthCsv << "Time,NodeName,DeviceIndex,QueueLength\n";
+    }
+
+    Simulator::Schedule(Seconds(0.0), &RecordQueueLengths, routerMap, allDevices, qdiscs, 0.5);
 
     // installo le app onoff per generare traffico
     auto allDemands = LoadAllMatrices();
