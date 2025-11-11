@@ -118,8 +118,7 @@ QRoutingProtocol::FindMinActionForDestinationIndex(int destIndex, Action& outAct
                 outAction.q_value = 0; // opzionale, puoi impostare un valore neutro
                 found = true;
 
-                std::cout << "[QROUTING] pacchetto destinato all'host collegato direttamente"
-                          << std::endl;
+                //pacchetto destinato all'host collegato direttamente
             }
         }
     }
@@ -236,12 +235,6 @@ QRoutingProtocol::RouteInput(Ptr<const Packet> p,
     // PrintInternalState();
     Ipv6Address dst = header.GetDestination();
     Ipv6Address src = header.GetSource();
-    std::cout << "[ROUTEINPUT] RouteInput invoked. Nodo " << m_nodeName
-              << " ha ricevuto pacchetto partito da:" << src << " verso:" << dst << std::endl;
-
-    // PrintInternalState();
-
-    // 1) Filtra pacchetti speciali (NextHeader = 200)
 
     uint8_t bytes[16];
     dst.GetBytes(bytes);
@@ -274,8 +267,7 @@ QRoutingProtocol::RouteInput(Ptr<const Packet> p,
             {
                 if (m_ipv6->GetAddress(i, j).GetAddress() == dst)
                 {
-                    std::cout << "[QROUTING] Pacchetto destinato al nodo locale " << m_nodeName
-                              << std::endl;
+                    //Pacchetto destinato al nodo locale "
                     if (!lcb.IsNull())
                         lcb(p, header, idev->GetIfIndex());
                     return true; // consegnato localmente
@@ -344,12 +336,6 @@ QRoutingProtocol::RouteInput(Ptr<const Packet> p,
     if (!ucb.IsNull())
     {
         ucb(idev, route, p, header);
-        /*std::cout << "[ROUTEINPUT] forwarding: src=" << src << " dst=" << dst
-                  << " incomingIf=" << idev->GetIfIndex()
-                  << " outIf=" << chosen.outDevice->GetIfIndex()
-                  << " q=" << chosen.q_value << std::endl;
-        std::cout << "[ROUTEINPUT] RouteInput: forwarding pacchetto tramite interfaccia "
-                  << chosen.outDevice->GetIfIndex() << " verso " << dst << std::endl;*/
     }
     else
     {

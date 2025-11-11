@@ -192,8 +192,8 @@ QueueStatusApp::SendQueueStatus()
 
             buffer.insert(buffer.end(), m_nameSource.begin(), m_nameSource.end());
 
-            std::cout << "[SENDER] lineIndex=" << lineIndex << ", minQValue=" << minQValue
-                      << ", nameSource=" << m_nameSource << "n nameDestination: " << m_nameDestination << std::endl;
+            //std::cout << "[SENDER] lineIndex=" << lineIndex << ", minQValue=" << minQValue
+            //          << ", nameSource=" << m_nameSource << "n nameDestination: " << m_nameDestination << std::endl;
         }
         else
         {
