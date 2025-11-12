@@ -7,7 +7,6 @@
 // //
 // // #link = 15
 
-
 #include "QueueStatusReceiver.h"
 #include "QueueStatusSender.h"
 #include "action.h"
@@ -15,6 +14,7 @@
 #include "dag_database.h"
 #include "flow_demand_reader.h"
 #include "qrouting-helper.h"
+#include "timestamped-onoff-application.h"
 
 #include "ns3/applications-module.h"
 #include "ns3/callback.h"
@@ -52,6 +52,9 @@
 
 std::ofstream csvFile;
 std::ofstream queueLengthCsv;
+std::ofstream csvLatency("latency.csv");
+bool headerWritten = false;
+
 using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE("NeighborsQueueStatusInRealScenario");
@@ -308,7 +311,73 @@ assignOutDevices(
 }
 
 void
-installUdpSinkOnAllNodes(std::map<std::string, Ptr<Node>>& nodeMap, uint16_t port)
+installUdpSinkOnAllHosts(std::map<std::string, Ptr<Node>>& nodeMap,
+                         uint16_t port,
+                         std::map<Ipv6Address, std::string>& ipv6ToHostName)
+{
+    for (auto& [name, node] : nodeMap)
+    {
+        // Creazione socket UDP
+        Ptr<Socket> recvSocket = Socket::CreateSocket(node, UdpSocketFactory::GetTypeId());
+        Inet6SocketAddress local = Inet6SocketAddress(Ipv6Address::GetAny(), port);
+        recvSocket->Bind(local);
+
+        // Ptr<Packet> packet = recvSocket->RecvFrom(from); // riceve il primo pacchetto
+        Time sendTime;
+        Time receiveTime;
+        Time latency;
+
+        // Impostiamo la callback che stampa quando arriva un pacchetto
+        recvSocket->SetRecvCallback(
+            Callback<void, Ptr<Socket>>([&ipv6ToHostName](Ptr<Socket> socket) {
+                Address from;
+
+                Ptr<Packet> packet = socket->RecvFrom(from);
+                Inet6SocketAddress addr = Inet6SocketAddress::ConvertFrom(from);
+
+                TimestampTag tag;
+                if (packet->PeekPacketTag(tag))
+                {
+                    Time sendTime = tag.GetTimestamp();
+                    Time receiveTime = Simulator::Now();
+                    Time latency = receiveTime - sendTime;
+
+                    std::string srcNode = "Unknown";
+                    std::string dstNode = "unknown";
+
+                    if (!headerWritten)
+                    {
+                        csvLatency << std::fixed << std::setprecision(9);
+                        csvLatency
+                            << "src_node,src_ip,dst_node,dst_ip,send_time,receive_time,latency\n";
+                        headerWritten = true;
+                    }
+
+                    Ipv6Address srcIp = addr.GetIpv6();
+                    Ipv6Address dstIp =
+                        socket->GetNode()->GetObject<Ipv6>()->GetAddress(1, 1).GetAddress();
+
+                    auto itSrc = ipv6ToHostName.find(srcIp);
+                    if (itSrc != ipv6ToHostName.end())
+                    {
+                        srcNode = itSrc->second;
+                    }
+                    
+                    auto itDst = ipv6ToHostName.find(dstIp);
+                    if (itDst != ipv6ToHostName.end())
+                    {
+                        dstNode = itDst->second;
+                    }
+                    csvLatency << srcNode << "," << srcIp << "," << dstNode << "," << dstIp << ","
+                               << sendTime.GetSeconds() << "," << receiveTime.GetSeconds() << ","
+                               << latency.GetSeconds() << "\n";
+                }
+            }));
+    }
+}
+
+void
+installUdpSinkOnAllRouters(std::map<std::string, Ptr<Node>>& nodeMap, uint16_t port)
 {
     for (auto& [name, node] : nodeMap)
     {
@@ -319,6 +388,53 @@ installUdpSinkOnAllNodes(std::map<std::string, Ptr<Node>>& nodeMap, uint16_t por
         ApplicationContainer sinkApp = sinkHelper.Install(node);
         sinkApp.Start(Seconds(1.0));
         sinkApp.Stop(Seconds(30.0));
+    }
+}
+
+void
+installOnOffApplicationForLatencyAnalysis(std::vector<FlowDemand>& demands,
+                                          std::map<std::string, Ptr<Node>>& nodeMap,
+                                          std::map<std::string, Ipv6Address>& nodeNameToIpv6,
+                                          double scale,
+                                          double startTime,
+                                          double stopTime)
+{
+    Ptr<UniformRandomVariable> pktSizeRand = CreateObject<UniformRandomVariable>();
+    pktSizeRand->SetAttribute("Min", DoubleValue(512));
+    pktSizeRand->SetAttribute("Max", DoubleValue(1400));
+
+    Ptr<UniformRandomVariable> rateRand = CreateObject<UniformRandomVariable>();
+    rateRand->SetAttribute("Min", DoubleValue(0.8));
+    rateRand->SetAttribute("Max", DoubleValue(1.2));
+
+    Ptr<UniformRandomVariable> jitter = CreateObject<UniformRandomVariable>();
+    jitter->SetAttribute("Min", DoubleValue(0.0));
+    jitter->SetAttribute("Max", DoubleValue(1.0));
+
+    for (const auto& flow : demands)
+    {
+        Ptr<Node> srcNode = nodeMap.at(flow.src);
+        Ipv6Address dstAddr = nodeNameToIpv6.at(flow.dst);
+
+        double scaledRate = flow.rateMbps * scale;
+        double randomizedRate = scaledRate * rateRand->GetValue();
+        std::ostringstream rateStr;
+        rateStr << randomizedRate << "Mbps";
+
+        Ptr<TimeStampedOnOffApplication> app = CreateObject<TimeStampedOnOffApplication>();
+        app->SetAttribute("Remote", AddressValue(Inet6SocketAddress(dstAddr, 9999)));
+        app->SetAttribute("PacketSize", UintegerValue(pktSizeRand->GetInteger()));
+        app->SetAttribute("DataRate", StringValue(rateStr.str()));
+
+        // Imposto OnTime/OffTime casuali → burst
+        app->SetAttribute("OnTime", StringValue("ns3::ExponentialRandomVariable[Mean=1.0]"));
+        app->SetAttribute("OffTime", StringValue("ns3::ExponentialRandomVariable[Mean=0.5]"));
+
+        srcNode->AddApplication(app);
+
+        double offset = jitter->GetValue();
+        app->SetStartTime(Seconds(startTime + offset));
+        app->SetStopTime(Seconds(stopTime));
     }
 }
 
@@ -592,8 +708,7 @@ main()
         subnetCount++;
     }
 
-    installUdpSinkOnAllNodes(hostMap, 9999);
-
+    installUdpSinkOnAllHosts(hostMap, 9999, ipv6ToHostName);
 
     createQRegisterForAllNodes(routerMap, nameToQRegister);
     assignOutDevices(routerMap, nameToQRegister);
@@ -673,12 +788,20 @@ main()
 
     // installo le app onoff per generare traffico
     auto allDemands = LoadAllMatrices();
-    installUdpSinkOnAllNodes(routerMap, 9999);
-    installOnOffApplicationV6(allDemands[0],
+    installUdpSinkOnAllRouters(routerMap, 9999);
+
+    /*installOnOffApplicationV6(allDemands[0],
                               hostMap,
                               hostAddressMap,
-                              0.248); // uso solo la prima demand
+                              0.248); // uso solo la prima demand*/
 
+    installOnOffApplicationForLatencyAnalysis(allDemands[0],
+                                              hostMap,
+                                              hostAddressMap,
+                                              0.248, // scala i valori di traffico
+                                              5.0,   // start time
+                                              15.0   // stop time
+    );
 
     Simulator::Stop(Seconds(30.0));
     Simulator::Run();
