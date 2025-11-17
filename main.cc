@@ -399,7 +399,7 @@ installOnOffApplicationForLatencyAnalysis(std::vector<FlowDemand>& demands,
                                           double startTime,
                                           double stopTime)
 {
-    Ptr<UniformRandomVariable> pktSizeRand = CreateObject<UniformRandomVariable>();
+    /*Ptr<UniformRandomVariable> pktSizeRand = CreateObject<UniformRandomVariable>();
     pktSizeRand->SetAttribute("Min", DoubleValue(512));
     pktSizeRand->SetAttribute("Max", DoubleValue(1400));
 
@@ -409,7 +409,9 @@ installOnOffApplicationForLatencyAnalysis(std::vector<FlowDemand>& demands,
 
     Ptr<UniformRandomVariable> jitter = CreateObject<UniformRandomVariable>();
     jitter->SetAttribute("Min", DoubleValue(0.0));
-    jitter->SetAttribute("Max", DoubleValue(1.0));
+    jitter->SetAttribute("Max", DoubleValue(1.0));*/
+
+    const uint32_t fixedPacketSize = 1024; // byte
 
     for (const auto& flow : demands)
     {
@@ -417,23 +419,26 @@ installOnOffApplicationForLatencyAnalysis(std::vector<FlowDemand>& demands,
         Ipv6Address dstAddr = nodeNameToIpv6.at(flow.dst);
 
         double scaledRate = flow.rateMbps * scale;
-        double randomizedRate = scaledRate * rateRand->GetValue();
+        //double randomizedRate = scaledRate * rateRand->GetValue();
         std::ostringstream rateStr;
-        rateStr << randomizedRate << "Mbps";
+        rateStr << scaledRate << "Mbps";
 
         Ptr<TimeStampedOnOffApplication> app = CreateObject<TimeStampedOnOffApplication>();
         app->SetAttribute("Remote", AddressValue(Inet6SocketAddress(dstAddr, 9999)));
-        app->SetAttribute("PacketSize", UintegerValue(pktSizeRand->GetInteger()));
+        app->SetAttribute("PacketSize", UintegerValue(fixedPacketSize));
         app->SetAttribute("DataRate", StringValue(rateStr.str()));
 
         // Imposto OnTime/OffTime casuali → burst
-        app->SetAttribute("OnTime", StringValue("ns3::ExponentialRandomVariable[Mean=1.0]"));
-        app->SetAttribute("OffTime", StringValue("ns3::ExponentialRandomVariable[Mean=0.5]"));
+        double totalOnTime = stopTime - startTime;
+        std::ostringstream onTimeStr;
+        onTimeStr << "ns3::ConstantRandomVariable[Constant=" << totalOnTime << "]";
+        app->SetAttribute("OnTime", StringValue(onTimeStr.str()));
+        app->SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0]"));
 
         srcNode->AddApplication(app);
 
-        double offset = jitter->GetValue();
-        app->SetStartTime(Seconds(startTime + offset));
+        //double offset = jitter->GetValue();
+        app->SetStartTime(Seconds(startTime /*+ offset*/));
         app->SetStopTime(Seconds(stopTime));
     }
 }
@@ -478,11 +483,9 @@ RecordQueueLengths(std::map<std::string, Ptr<Node>>& nodeMap,
                 queueLength = queue->GetNPackets();
         }
 
-        queueLengthCsv << currentTime << ",   " << nodeName << "," << i << "," << queueLength
+        queueLengthCsv << currentTime << "," << nodeName << "," << i << "," << queueLength
                        << "\n";
     }
-    queueLengthCsv << "---------------------------------\n";
-
     Simulator::Schedule(Seconds(interval),
                         &RecordQueueLengths,
                         nodeMap,
@@ -494,10 +497,6 @@ RecordQueueLengths(std::map<std::string, Ptr<Node>>& nodeMap,
 int
 main()
 {
-    // csv generato dai receiver
-    csvFile.open("receiver_queue_log.csv");
-    csvFile << "Time,ReceiverNodeID,SenderNodeID,SenderInterfaceAddress,QueueSize\n";
-
     Time::SetResolution(Time::NS);
 
     // Creazione della topologia Abilene Networl
@@ -541,7 +540,7 @@ main()
     RipNgHelper ripngRouting;
     Ipv6ListRoutingHelper listRH;
     listRH.Add(qRoutingHelper, 100);
-    //listRH.Add(ripngRouting, 10);
+    //listRH.Add(ripngRouting, 100);
 
     InternetStackHelper internet;
     internet.SetRoutingHelper(listRH);
@@ -803,7 +802,7 @@ main()
                                               15.0   // stop time
     );
 
-    Simulator::Stop(Seconds(30.0));
+    Simulator::Stop(Seconds(40.0));
     Simulator::Run();
     Simulator::Destroy();
 
