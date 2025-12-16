@@ -539,8 +539,8 @@ main()
 
     RipNgHelper ripngRouting;
     Ipv6ListRoutingHelper listRH;
-    listRH.Add(qRoutingHelper, 100);
-    //listRH.Add(ripngRouting, 100);
+    listRH.Add(qRoutingHelper, 10);
+    listRH.Add(ripngRouting, 100);
 
     InternetStackHelper internet;
     internet.SetRoutingHelper(listRH);
