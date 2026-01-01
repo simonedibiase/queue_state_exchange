@@ -79,7 +79,7 @@ installReceiverExchangeStateAppOnAllNodes(
         receiverApp->SetQRegister(q_register);
         node->AddApplication(receiverApp);
         receiverApp->SetStartTime(Seconds(1.0));
-        receiverApp->SetStopTime(Seconds(30.0));
+        receiverApp->SetStopTime(Seconds(100.0));
     }
 }
 
@@ -100,13 +100,13 @@ installBidirectionalQueueStatusSenders(
     firstWaySender->Setup(addrA, addrB, nameA, nameB, q_registerA, indexB);
     nodeA->AddApplication(firstWaySender);
     firstWaySender->SetStartTime(Seconds(2.0));
-    firstWaySender->SetStopTime(Seconds(30.0));
+    firstWaySender->SetStopTime(Seconds(100.0));
 
     Ptr<QueueStatusApp> secondWaySender = CreateObject<QueueStatusApp>();
     secondWaySender->Setup(addrB, addrA, nameB, nameA, q_registerB, indexA);
     nodeB->AddApplication(secondWaySender);
     secondWaySender->SetStartTime(Seconds(2.0));
-    secondWaySender->SetStopTime(Seconds(30.0));
+    secondWaySender->SetStopTime(Seconds(100.0));
 }
 
 int
@@ -149,7 +149,7 @@ installOnOffApplicationV6(std::vector<FlowDemand>& demands,
 
         ApplicationContainer app = onoff.Install(srcNode);
         app.Start(Seconds(2.0));
-        app.Stop(Seconds(10.0)); 
+        app.Stop(Seconds(100.0)); 
     }
 }
 
@@ -387,7 +387,7 @@ installUdpSinkOnAllRouters(std::map<std::string, Ptr<Node>>& nodeMap, uint16_t p
 
         ApplicationContainer sinkApp = sinkHelper.Install(node);
         sinkApp.Start(Seconds(1.0));
-        sinkApp.Stop(Seconds(30.0));
+        sinkApp.Stop(Seconds(100.0));
     }
 }
 
@@ -539,8 +539,8 @@ main()
 
     RipNgHelper ripngRouting;
     Ipv6ListRoutingHelper listRH;
-    listRH.Add(qRoutingHelper, 10);
-    listRH.Add(ripngRouting, 100);
+    listRH.Add(qRoutingHelper, 100);
+    listRH.Add(ripngRouting, 10);
 
     InternetStackHelper internet;
     internet.SetRoutingHelper(listRH);
@@ -798,8 +798,8 @@ main()
                                               hostMap,
                                               hostAddressMap,
                                               0.248, // scala i valori di traffico
-                                              5.0,   // start time
-                                              15.0   // stop time
+                                              20.0,   // start time
+                                              30.0   // stop time
     );
 
     Simulator::Stop(Seconds(40.0));
