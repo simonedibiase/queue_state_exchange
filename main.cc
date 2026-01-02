@@ -43,6 +43,7 @@
 #include "ns3/timestamp-tag.h"
 #include "ns3/traffic-control-helper.h"
 #include "ns3/traffic-control-layer.h"
+#include "traffic-type-header.h"
 
 #include <fstream>
 #include <iomanip> // per std::setprecision
@@ -52,7 +53,8 @@
 
 std::ofstream csvFile;
 std::ofstream queueLengthCsv;
-std::ofstream csvLatency("latency.csv");
+std::ofstream csvLatencyNormalTraffic("latency_normal_traffic.csv");
+std::ofstream csvLatencyDelaySensitive("latency_delay_sensitive.csv");
 bool headerWritten = false;
 
 using namespace ns3;
@@ -347,9 +349,14 @@ installUdpSinkOnAllHosts(std::map<std::string, Ptr<Node>>& nodeMap,
 
                     if (!headerWritten)
                     {
-                        csvLatency << std::fixed << std::setprecision(9);
-                        csvLatency
+                        csvLatencyDelaySensitive << std::fixed << std::setprecision(9);
+                        csvLatencyDelaySensitive
                             << "src_node,src_ip,dst_node,dst_ip,send_time,receive_time,latency\n";
+
+                        csvLatencyNormalTraffic << std::fixed << std::setprecision(9);
+                        csvLatencyNormalTraffic
+                            << "src_node,src_ip,dst_node,dst_ip,send_time,receive_time,latency\n";
+
                         headerWritten = true;
                     }
 
@@ -368,9 +375,32 @@ installUdpSinkOnAllHosts(std::map<std::string, Ptr<Node>>& nodeMap,
                     {
                         dstNode = itDst->second;
                     }
-                    csvLatency << srcNode << "," << srcIp << "," << dstNode << "," << dstIp << ","
+
+
+                    
+                    TrafficTypeHeader tHeader;
+                    packet->PeekHeader(tHeader);
+
+                    if (tHeader.GetType() == TrafficTypeHeader::DELAY_SENSITIVE)
+                    {
+                        csvLatencyDelaySensitive << srcNode << "," << srcIp << "," << dstNode
+                                                 << "," << dstIp << ","
+                                                << sendTime.GetSeconds() << ","
+                                                << receiveTime.GetSeconds() << ","
+                                                << latency.GetSeconds() << "\n";
+                    }
+                    else
+                    {
+                        csvLatencyNormalTraffic << srcNode << "," << srcIp << "," << dstNode
+                                                << "," << dstIp << ","
+                                                << sendTime.GetSeconds() << ","
+                                                << receiveTime.GetSeconds() << ","
+                                                << latency.GetSeconds() << "\n";
+                    }
+                    
+                    /*csvLatency << srcNode << "," << srcIp << "," << dstNode << "," << dstIp << ","
                                << sendTime.GetSeconds() << "," << receiveTime.GetSeconds() << ","
-                               << latency.GetSeconds() << "\n";
+                               << latency.GetSeconds() << "\n";*/
                 }
             }));
     }
@@ -397,7 +427,8 @@ installOnOffApplicationForLatencyAnalysis(std::vector<FlowDemand>& demands,
                                           std::map<std::string, Ipv6Address>& nodeNameToIpv6,
                                           double scale,
                                           double startTime,
-                                          double stopTime)
+                                          double stopTime,
+                                          uint32_t trafficType)
 {
     /*Ptr<UniformRandomVariable> pktSizeRand = CreateObject<UniformRandomVariable>();
     pktSizeRand->SetAttribute("Min", DoubleValue(512));
@@ -411,7 +442,7 @@ installOnOffApplicationForLatencyAnalysis(std::vector<FlowDemand>& demands,
     jitter->SetAttribute("Min", DoubleValue(0.0));
     jitter->SetAttribute("Max", DoubleValue(1.0));*/
 
-    const uint32_t fixedPacketSize = 1024; // byte
+    const uint32_t fixedPacketSize = 1000; // byte
 
     for (const auto& flow : demands)
     {
@@ -427,6 +458,7 @@ installOnOffApplicationForLatencyAnalysis(std::vector<FlowDemand>& demands,
         app->SetAttribute("Remote", AddressValue(Inet6SocketAddress(dstAddr, 9999)));
         app->SetAttribute("PacketSize", UintegerValue(fixedPacketSize));
         app->SetAttribute("DataRate", StringValue(rateStr.str()));
+        app->SetAttribute("TrafficType", UintegerValue(trafficType)); // 0 = normal, 1 = latency analysis
 
         // Imposto OnTime/OffTime casuali → burst
         double totalOnTime = stopTime - startTime;
@@ -799,8 +831,18 @@ main()
                                               hostAddressMap,
                                               0.248, // scala i valori di traffico
                                               20.0,   // start time
-                                              30.0   // stop time
+                                              30.0,   // stop time
+                                              0      // tipo di traffico: normale
     );
+
+    installOnOffApplicationForLatencyAnalysis(allDemands[0],
+                                              hostMap,
+                                              hostAddressMap,
+                                              0.248, // scala i valori di traffico
+                                              20.0,  // start time
+                                              30.0,  // stop time
+                                              1     // tipo di traffico: delay sensitiva
+                                            );
 
     Simulator::Stop(Seconds(40.0));
     Simulator::Run();
