@@ -11,6 +11,8 @@
 #include "ns3/simulator.h"
 #include "ns3/socket.h"
 #include "ns3/udp-header.h"
+#include "traffic-type-header.h"
+#include "ns3/seq-ts-size-header.h"
 
 #include <limits>
 
@@ -146,6 +148,37 @@ QRoutingProtocol::RouteInput(Ptr<const Packet> p,
     // PrintInternalState();
     Ipv6Address dst = header.GetDestination();
     Ipv6Address src = header.GetSource();
+
+    Ptr<Packet> copy = p->Copy();
+
+    UdpHeader udp;
+    if (copy->PeekHeader(udp))
+    {
+        copy->RemoveHeader(udp);
+    }
+
+    // --- PROVA prima a leggere direttamente il TrafficTypeHeader ---
+    TrafficTypeHeader tHeader;
+
+    if (!copy->PeekHeader(tHeader))
+    {
+        // se fallisce, probabilmente c'è prima SeqTsSizeHeader
+        SeqTsSizeHeader seq;
+        if (copy->PeekHeader(seq))
+        {
+            copy->RemoveHeader(seq);
+            copy->PeekHeader(tHeader);
+        }
+    }
+
+    if (copy->PeekHeader(tHeader))
+    {
+        if (tHeader.GetType() == TrafficTypeHeader::NORMAL)
+        {
+            //std::cout << "[QROUTING] Pacchetto NORMAL -> passo a RIPng\n";
+            return false;
+        }
+    }
 
     uint8_t bytes[16];
     dst.GetBytes(bytes);
