@@ -143,6 +143,7 @@ class TimeStampedOnOffApplication : public Application
     uint64_t m_totBytes;                 //!< Total bytes sent so far
     EventId m_startStopEvent;            //!< Event id for next start or stop event
     EventId m_sendEvent;                 //!< Event id of pending "send packet" event
+    uint32_t m_trafficType{0};           //!< Traffic type: 0 = normal, 1 = delay-sensitive
     TypeId m_tid;                        //!< Type of the socket used
     uint32_t m_seq{0};                   //!< Sequence
     Ptr<Packet> m_unsentPacket;          //!< Unsent packet cached for future attempt

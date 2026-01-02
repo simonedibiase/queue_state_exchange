@@ -21,6 +21,7 @@
 #include "ns3/trace-source-accessor.h"
 #include "ns3/udp-socket-factory.h"
 #include "ns3/uinteger.h"
+#include "traffic-type-header.h"
 
 namespace ns3
 {
@@ -107,7 +108,12 @@ TimeStampedOnOffApplication::GetTypeId()
                 "TxWithSeqTsSize",
                 "A new packet is created with SeqTsSizeHeader",
                 MakeTraceSourceAccessor(&TimeStampedOnOffApplication::m_txTraceWithSeqTsSize),
-                "ns3::PacketSink::SeqTsSizeCallback");
+                "ns3::PacketSink::SeqTsSizeCallback")
+            .AddAttribute("TrafficType",
+                          "0 = normal, 1 = delay-sensitive",
+                          UintegerValue(0),
+                          MakeUintegerAccessor(&TimeStampedOnOffApplication::m_trafficType),
+                          MakeUintegerChecker<uint32_t>(0, 1));
     return tid;
 }
 
@@ -369,15 +375,24 @@ TimeStampedOnOffApplication::SendPacket()
         packet = Create<Packet>(m_pktSize);
     }
 
+    TrafficTypeHeader tHeader;
+    tHeader.SetType(m_trafficType == 0 ? TrafficTypeHeader::NORMAL
+                                       : TrafficTypeHeader::DELAY_SENSITIVE);
+    packet->AddHeader(tHeader);
+
     TimestampTag tag;
     tag.SetTimestamp(Simulator::Now());
-    packet->AddPacketTag(tag);
+    TimestampTag existing;
+    if (!packet->PeekPacketTag(existing))
+    {
+        packet->AddPacketTag(tag);
+    }
 
     int actual = m_socket->Send(packet);
-    if ((unsigned)actual == m_pktSize)
+    if (actual >= 0)
     {
         m_txTrace(packet);
-        m_totBytes += m_pktSize;
+        m_totBytes += packet->GetSize();
         m_unsentPacket = nullptr;
         Address localAddress;
         m_socket->GetSockName(localAddress);
