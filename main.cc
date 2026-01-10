@@ -81,7 +81,7 @@ installReceiverExchangeStateAppOnAllNodes(
         receiverApp->SetQRegister(q_register);
         node->AddApplication(receiverApp);
         receiverApp->SetStartTime(Seconds(1.0));
-        receiverApp->SetStopTime(Seconds(100.0));
+        receiverApp->SetStopTime(Seconds(140.0));
     }
 }
 
@@ -102,13 +102,13 @@ installBidirectionalQueueStatusSenders(
     firstWaySender->Setup(addrA, addrB, nameA, nameB, q_registerA, indexB);
     nodeA->AddApplication(firstWaySender);
     firstWaySender->SetStartTime(Seconds(2.0));
-    firstWaySender->SetStopTime(Seconds(100.0));
+    firstWaySender->SetStopTime(Seconds(140.0));
 
     Ptr<QueueStatusApp> secondWaySender = CreateObject<QueueStatusApp>();
     secondWaySender->Setup(addrB, addrA, nameB, nameA, q_registerB, indexA);
     nodeB->AddApplication(secondWaySender);
     secondWaySender->SetStartTime(Seconds(2.0));
-    secondWaySender->SetStopTime(Seconds(100.0));
+    secondWaySender->SetStopTime(Seconds(140.0));
 }
 
 int
@@ -151,7 +151,7 @@ installOnOffApplicationV6(std::vector<FlowDemand>& demands,
 
         ApplicationContainer app = onoff.Install(srcNode);
         app.Start(Seconds(2.0));
-        app.Stop(Seconds(100.0)); 
+        app.Stop(Seconds(140.0)); 
     }
 }
 
@@ -417,7 +417,7 @@ installUdpSinkOnAllRouters(std::map<std::string, Ptr<Node>>& nodeMap, uint16_t p
 
         ApplicationContainer sinkApp = sinkHelper.Install(node);
         sinkApp.Start(Seconds(1.0));
-        sinkApp.Stop(Seconds(100.0));
+        sinkApp.Stop(Seconds(140.0));
     }
 }
 
@@ -509,10 +509,11 @@ RecordQueueLengths(std::map<std::string, Ptr<Node>>& nodeMap,
         }
         else
         {
+            /*
             // Fallback: nel caso non ci sia un QueueDisc (es. TC disabilitato)
             Ptr<QueueBase> queue = DynamicCast<QueueBase>(dev->GetObject<QueueBase>());
             if (queue)
-                queueLength = queue->GetNPackets();
+                queueLength = queue->GetNPackets();*/
         }
 
         queueLengthCsv << currentTime << "," << nodeName << "," << i << "," << queueLength
@@ -584,7 +585,7 @@ main()
     // Aggiungi tutti i link con valori scalati
     links.push_back({"ATLAng", "ATLAM5", 9.92}); // 99.2Mbps
     links.push_back({"HSTNng", "ATLAng", 9.92});
-    links.push_back({"IPLSng", "ATLAng", 2.48});
+    links.push_back({"IPLSng", "ATLAng", 9.48});
     links.push_back({"WASHng", "ATLAng", 9.92});
     links.push_back({"IPLSng", "CHINng", 9.92});
     links.push_back({"NYCMng", "CHINng", 9.92});
@@ -826,25 +827,25 @@ main()
                               hostAddressMap,
                               0.248); // uso solo la prima demand*/
 
-    installOnOffApplicationForLatencyAnalysis(allDemands[0],
+    installOnOffApplicationForLatencyAnalysis(allDemands[1],
                                               hostMap,
                                               hostAddressMap,
                                               0.248, // scala i valori di traffico
                                               20.0,   // start time
-                                              30.0,   // stop time
+                                              80.0,   // stop time
                                               0      // tipo di traffico: normale
     );
 
     installOnOffApplicationForLatencyAnalysis(allDemands[0],
                                               hostMap,
                                               hostAddressMap,
-                                              0.248, // scala i valori di traffico
+                                              0.023, // scala i valori di traffico
                                               20.0,  // start time
-                                              30.0,  // stop time
+                                              80.0,  // stop time
                                               1     // tipo di traffico: delay sensitiva
                                             );
 
-    Simulator::Stop(Seconds(40.0));
+    Simulator::Stop(Seconds(140.0));
     Simulator::Run();
     Simulator::Destroy();
 
