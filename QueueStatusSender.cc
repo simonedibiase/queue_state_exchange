@@ -217,5 +217,5 @@ QueueStatusApp::SendQueueStatus()
 void
 QueueStatusApp::ScheduleNextQueueStatus()
 {
-    m_sendEvent = Simulator::Schedule(Seconds(0.4), &QueueStatusApp::SendQueueStatus, this);
+    m_sendEvent = Simulator::Schedule(Seconds(0.01), &QueueStatusApp::SendQueueStatus, this);
 }

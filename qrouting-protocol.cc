@@ -11,6 +11,8 @@
 #include "ns3/simulator.h"
 #include "ns3/socket.h"
 #include "ns3/udp-header.h"
+#include "traffic-type-header.h"
+#include "ns3/seq-ts-size-header.h"
 
 #include <limits>
 
@@ -147,6 +149,37 @@ QRoutingProtocol::RouteInput(Ptr<const Packet> p,
     Ipv6Address dst = header.GetDestination();
     Ipv6Address src = header.GetSource();
 
+    Ptr<Packet> copy = p->Copy();
+
+    UdpHeader udp;
+    if (copy->PeekHeader(udp))
+    {
+        copy->RemoveHeader(udp);
+    }
+
+    // --- PROVA prima a leggere direttamente il TrafficTypeHeader ---
+    TrafficTypeHeader tHeader;
+
+    if (!copy->PeekHeader(tHeader))
+    {
+        // se fallisce, probabilmente c'è prima SeqTsSizeHeader
+        SeqTsSizeHeader seq;
+        if (copy->PeekHeader(seq))
+        {
+            copy->RemoveHeader(seq);
+            copy->PeekHeader(tHeader);
+        }
+    }
+
+    if (copy->PeekHeader(tHeader))
+    {
+        if (tHeader.GetType() == TrafficTypeHeader::NORMAL)
+        {
+            //std::cout << "[QROUTING] Pacchetto NORMAL -> passo a RIPng\n";
+            return false;
+        }
+    }
+
     uint8_t bytes[16];
     dst.GetBytes(bytes);
     if (bytes[0] != 0xfd)
@@ -155,21 +188,8 @@ QRoutingProtocol::RouteInput(Ptr<const Packet> p,
         return false;
     }
 
-    if (p)
-    {
-        Ipv6Header ipv6Header;
-        Ptr<Packet> tmp = p->Copy(); // p è const
-        tmp->PeekHeader(ipv6Header);
 
-        if (ipv6Header.GetNextHeader() == 200)
-        {
-            // std::cout << "[ROUTEINPUT] Ignoro pacchetto con NextHeader = 200 (QueueStatusApp)"
-            //           << std::endl;
-            return false; // lascia gestire ad altri protocolli
-        }
-    }
-
-    // 2) Controlla se il pacchetto è destinato al nodo locale
+    // 1) Controlla se il pacchetto è destinato al nodo locale
     if (m_ipv6)
     {
         for (uint32_t i = 0; i < m_ipv6->GetNInterfaces(); ++i)
@@ -187,7 +207,7 @@ QRoutingProtocol::RouteInput(Ptr<const Packet> p,
         }
     }
 
-    // 3) Risolvi il nome del nodo di destinazione
+    // 2) Risolvi il nome del nodo di destinazione
     auto it = m_addrToName.find(dst);
     if (it == m_addrToName.end())
     {
@@ -209,7 +229,7 @@ QRoutingProtocol::RouteInput(Ptr<const Packet> p,
         return false;
     }
 
-    // 4) Trova la migliore azione nella Q-table
+    // 3) Trova la migliore azione nella Q-table
     Action chosen;
     if (!FindMinActionForDestinationIndex(destIndex, chosen) || chosen.outDevice == nullptr)
     {
@@ -220,7 +240,7 @@ QRoutingProtocol::RouteInput(Ptr<const Packet> p,
         return false;
     }
 
-    // 5) Costruisci la route per il forwarding
+    // 4) Costruisci la route per il forwarding
     Ptr<Ipv6Route> route = Create<Ipv6Route>();
     route->SetDestination(dst);
     route->SetOutputDevice(chosen.outDevice);
@@ -243,7 +263,7 @@ QRoutingProtocol::RouteInput(Ptr<const Packet> p,
         }
     }
 
-    // 6) Chiama callback di forwarding unicast
+    // 5) Chiama callback di forwarding unicast
     if (!ucb.IsNull())
     {
         ucb(idev, route, p, header);
