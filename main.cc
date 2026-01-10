@@ -55,6 +55,7 @@ std::ofstream csvFile;
 std::ofstream queueLengthCsv;
 std::ofstream csvLatencyNormalTraffic("latency_normal_traffic.csv");
 std::ofstream csvLatencyDelaySensitive("latency_delay_sensitive.csv");
+std::ofstream csvLatencyBackgroundTraffic("latency_background_traffic.csv");
 bool headerWritten = false;
 
 using namespace ns3;
@@ -356,6 +357,10 @@ installUdpSinkOnAllHosts(std::map<std::string, Ptr<Node>>& nodeMap,
                         csvLatencyNormalTraffic << std::fixed << std::setprecision(9);
                         csvLatencyNormalTraffic
                             << "src_node,src_ip,dst_node,dst_ip,send_time,receive_time,latency\n";
+                        
+                        csvLatencyBackgroundTraffic << std::fixed << std::setprecision(9);
+                        csvLatencyBackgroundTraffic
+                            << "src_node,src_ip,dst_node,dst_ip,send_time,receive_time,latency\n";
 
                         headerWritten = true;
                     }
@@ -391,11 +396,17 @@ installUdpSinkOnAllHosts(std::map<std::string, Ptr<Node>>& nodeMap,
                     }
                     else
                     {
-                        csvLatencyNormalTraffic << srcNode << "," << srcIp << "," << dstNode
-                                                << "," << dstIp << ","
-                                                << sendTime.GetSeconds() << ","
-                                                << receiveTime.GetSeconds() << ","
-                                                << latency.GetSeconds() << "\n";
+                        if (tHeader.GetType() == TrafficTypeHeader::NORMAL){
+                            csvLatencyNormalTraffic << srcNode << "," << srcIp << "," << dstNode
+                                                    << "," << dstIp << "," << sendTime.GetSeconds()
+                                                    << "," << receiveTime.GetSeconds() << ","
+                                                    << latency.GetSeconds() << "\n";
+                        }else{
+                            csvLatencyBackgroundTraffic << srcNode << "," << srcIp << "," << dstNode
+                                                    << "," << dstIp << "," << sendTime.GetSeconds()
+                                                    << "," << receiveTime.GetSeconds() << ","
+                                                    << latency.GetSeconds() << "\n";
+                        }
                     }
                     
                     /*csvLatency << srcNode << "," << srcIp << "," << dstNode << "," << dstIp << ","
@@ -827,23 +838,32 @@ main()
                               hostAddressMap,
                               0.248); // uso solo la prima demand*/
 
+    installOnOffApplicationForLatencyAnalysis(allDemands[0],
+                                              hostMap,
+                                              hostAddressMap,
+                                              0.223, // scala i valori di traffico
+                                              20.0,  // start time
+                                              80.0,  // stop time
+                                              2      // tipo di traffico: background
+    );
+
     installOnOffApplicationForLatencyAnalysis(allDemands[1],
                                               hostMap,
                                               hostAddressMap,
                                               0.248, // scala i valori di traffico
-                                              20.0,   // start time
+                                              30.0,   // start time, dopo il traffico di background
                                               80.0,   // stop time
                                               0      // tipo di traffico: normale
     );
 
-    installOnOffApplicationForLatencyAnalysis(allDemands[0],
+    installOnOffApplicationForLatencyAnalysis(allDemands[1],
                                               hostMap,
                                               hostAddressMap,
                                               0.023, // scala i valori di traffico
-                                              20.0,  // start time
+                                              30.0,  // start time, , dopo il traffico di background
                                               80.0,  // stop time
-                                              1     // tipo di traffico: delay sensitiva
-                                            );
+                                              1      // tipo di traffico: delay sensitiva
+    );
 
     Simulator::Stop(Seconds(140.0));
     Simulator::Run();
