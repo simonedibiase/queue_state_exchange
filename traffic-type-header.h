@@ -11,7 +11,8 @@ class TrafficTypeHeader : public Header
     enum Type
     {
         NORMAL = 0,
-        DELAY_SENSITIVE = 1
+        DELAY_SENSITIVE = 1,
+        BACKGROUND = 2
     };
 
     TrafficTypeHeader()

@@ -110,10 +110,10 @@ TimeStampedOnOffApplication::GetTypeId()
                 MakeTraceSourceAccessor(&TimeStampedOnOffApplication::m_txTraceWithSeqTsSize),
                 "ns3::PacketSink::SeqTsSizeCallback")
             .AddAttribute("TrafficType",
-                          "0 = normal, 1 = delay-sensitive",
+                          "0 = normal, 1 = delay-sensitive, 2 = background",
                           UintegerValue(0),
                           MakeUintegerAccessor(&TimeStampedOnOffApplication::m_trafficType),
-                          MakeUintegerChecker<uint32_t>(0, 1));
+                          MakeUintegerChecker<uint32_t>(0, 2));
     return tid;
 }
 
@@ -376,8 +376,18 @@ TimeStampedOnOffApplication::SendPacket()
     }
 
     TrafficTypeHeader tHeader;
-    tHeader.SetType(m_trafficType == 0 ? TrafficTypeHeader::NORMAL
-                                       : TrafficTypeHeader::DELAY_SENSITIVE);
+    switch (m_trafficType)
+    {
+    case 0:
+        tHeader.SetType(TrafficTypeHeader::NORMAL);
+        break;
+    case 1:
+        tHeader.SetType(TrafficTypeHeader::DELAY_SENSITIVE);
+        break;
+    case 2:
+        tHeader.SetType(TrafficTypeHeader::BACKGROUND);
+        break;
+    }
     packet->AddHeader(tHeader);
 
     TimestampTag tag;
