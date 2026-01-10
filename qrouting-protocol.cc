@@ -173,7 +173,7 @@ QRoutingProtocol::RouteInput(Ptr<const Packet> p,
 
     if (copy->PeekHeader(tHeader))
     {
-        if (tHeader.GetType() == TrafficTypeHeader::NORMAL)
+        if (tHeader.GetType() == TrafficTypeHeader::NORMAL || tHeader.GetType() == TrafficTypeHeader::BACKGROUND)
         {
             //std::cout << "[QROUTING] Pacchetto NORMAL -> passo a RIPng\n";
             return false;
