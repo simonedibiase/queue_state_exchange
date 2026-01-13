@@ -15,6 +15,7 @@
 #include "flow_demand_reader.h"
 #include "qrouting-helper.h"
 #include "timestamped-onoff-application.h"
+#include "traffic-type-header.h"
 
 #include "ns3/applications-module.h"
 #include "ns3/callback.h"
@@ -43,7 +44,6 @@
 #include "ns3/timestamp-tag.h"
 #include "ns3/traffic-control-helper.h"
 #include "ns3/traffic-control-layer.h"
-#include "traffic-type-header.h"
 
 #include <fstream>
 #include <iomanip> // per std::setprecision
@@ -82,7 +82,7 @@ installReceiverExchangeStateAppOnAllNodes(
         receiverApp->SetQRegister(q_register);
         node->AddApplication(receiverApp);
         receiverApp->SetStartTime(Seconds(1.0));
-        receiverApp->SetStopTime(Seconds(140.0));
+        receiverApp->SetStopTime(Seconds(80.0));
     }
 }
 
@@ -109,7 +109,7 @@ installBidirectionalQueueStatusSenders(
     secondWaySender->Setup(addrB, addrA, nameB, nameA, q_registerB, indexA);
     nodeB->AddApplication(secondWaySender);
     secondWaySender->SetStartTime(Seconds(2.0));
-    secondWaySender->SetStopTime(Seconds(140.0));
+    secondWaySender->SetStopTime(Seconds(80.0));
 }
 
 int
@@ -152,7 +152,7 @@ installOnOffApplicationV6(std::vector<FlowDemand>& demands,
 
         ApplicationContainer app = onoff.Install(srcNode);
         app.Start(Seconds(2.0));
-        app.Stop(Seconds(140.0)); 
+        app.Stop(Seconds(80.0));
     }
 }
 
@@ -195,7 +195,6 @@ createQRegisterForAllNodes(
         nameToQRegister[name] = q_register;
         index++;
     }
-
 }
 
 void
@@ -357,7 +356,7 @@ installUdpSinkOnAllHosts(std::map<std::string, Ptr<Node>>& nodeMap,
                         csvLatencyNormalTraffic << std::fixed << std::setprecision(9);
                         csvLatencyNormalTraffic
                             << "src_node,src_ip,dst_node,dst_ip,send_time,receive_time,latency\n";
-                        
+
                         csvLatencyBackgroundTraffic << std::fixed << std::setprecision(9);
                         csvLatencyBackgroundTraffic
                             << "src_node,src_ip,dst_node,dst_ip,send_time,receive_time,latency\n";
@@ -374,41 +373,41 @@ installUdpSinkOnAllHosts(std::map<std::string, Ptr<Node>>& nodeMap,
                     {
                         srcNode = itSrc->second;
                     }
-                    
+
                     auto itDst = ipv6ToHostName.find(dstIp);
                     if (itDst != ipv6ToHostName.end())
                     {
                         dstNode = itDst->second;
                     }
 
-
-                    
                     TrafficTypeHeader tHeader;
                     packet->PeekHeader(tHeader);
 
                     if (tHeader.GetType() == TrafficTypeHeader::DELAY_SENSITIVE)
                     {
-                        csvLatencyDelaySensitive << srcNode << "," << srcIp << "," << dstNode
-                                                 << "," << dstIp << ","
-                                                << sendTime.GetSeconds() << ","
-                                                << receiveTime.GetSeconds() << ","
-                                                << latency.GetSeconds() << "\n";
+                        csvLatencyDelaySensitive << srcNode << "," << srcIp << "," << dstNode << ","
+                                                 << dstIp << "," << sendTime.GetSeconds() << ","
+                                                 << receiveTime.GetSeconds() << ","
+                                                 << latency.GetSeconds() << "\n";
                     }
                     else
                     {
-                        if (tHeader.GetType() == TrafficTypeHeader::NORMAL){
+                        if (tHeader.GetType() == TrafficTypeHeader::NORMAL)
+                        {
                             csvLatencyNormalTraffic << srcNode << "," << srcIp << "," << dstNode
                                                     << "," << dstIp << "," << sendTime.GetSeconds()
                                                     << "," << receiveTime.GetSeconds() << ","
                                                     << latency.GetSeconds() << "\n";
-                        }else{
-                            csvLatencyBackgroundTraffic << srcNode << "," << srcIp << "," << dstNode
-                                                    << "," << dstIp << "," << sendTime.GetSeconds()
-                                                    << "," << receiveTime.GetSeconds() << ","
-                                                    << latency.GetSeconds() << "\n";
+                        }
+                        else
+                        {
+                            csvLatencyBackgroundTraffic
+                                << srcNode << "," << srcIp << "," << dstNode << "," << dstIp << ","
+                                << sendTime.GetSeconds() << "," << receiveTime.GetSeconds() << ","
+                                << latency.GetSeconds() << "\n";
                         }
                     }
-                    
+
                     /*csvLatency << srcNode << "," << srcIp << "," << dstNode << "," << dstIp << ","
                                << sendTime.GetSeconds() << "," << receiveTime.GetSeconds() << ","
                                << latency.GetSeconds() << "\n";*/
@@ -428,7 +427,7 @@ installUdpSinkOnAllRouters(std::map<std::string, Ptr<Node>>& nodeMap, uint16_t p
 
         ApplicationContainer sinkApp = sinkHelper.Install(node);
         sinkApp.Start(Seconds(1.0));
-        sinkApp.Stop(Seconds(140.0));
+        sinkApp.Stop(Seconds(80.0));
     }
 }
 
@@ -461,7 +460,7 @@ installOnOffApplicationForLatencyAnalysis(std::vector<FlowDemand>& demands,
         Ipv6Address dstAddr = nodeNameToIpv6.at(flow.dst);
 
         double scaledRate = flow.rateMbps * scale;
-        //double randomizedRate = scaledRate * rateRand->GetValue();
+        // double randomizedRate = scaledRate * rateRand->GetValue();
         std::ostringstream rateStr;
         rateStr << scaledRate << "Mbps";
 
@@ -469,7 +468,8 @@ installOnOffApplicationForLatencyAnalysis(std::vector<FlowDemand>& demands,
         app->SetAttribute("Remote", AddressValue(Inet6SocketAddress(dstAddr, 9999)));
         app->SetAttribute("PacketSize", UintegerValue(fixedPacketSize));
         app->SetAttribute("DataRate", StringValue(rateStr.str()));
-        app->SetAttribute("TrafficType", UintegerValue(trafficType)); // 0 = normal, 1 = latency analysis
+        app->SetAttribute("TrafficType",
+                          UintegerValue(trafficType)); // 0 = normal, 1 = latency analysis
 
         // Imposto OnTime/OffTime casuali → burst
         double totalOnTime = stopTime - startTime;
@@ -480,10 +480,40 @@ installOnOffApplicationForLatencyAnalysis(std::vector<FlowDemand>& demands,
 
         srcNode->AddApplication(app);
 
-        //double offset = jitter->GetValue();
+        // double offset = jitter->GetValue();
         app->SetStartTime(Seconds(startTime /*+ offset*/));
         app->SetStopTime(Seconds(stopTime));
     }
+}
+
+std::string
+GetPeerNodeName(Ptr<NetDevice> dev, const std::map<std::string, Ptr<Node>>& nodeMap)
+{
+    Ptr<PointToPointNetDevice> p2p = DynamicCast<PointToPointNetDevice>(dev);
+    if (!p2p)
+        return "N/A";
+
+    Ptr<Channel> channel = p2p->GetChannel();
+    if (!channel)
+        return "N/A";
+
+    Ptr<Node> localNode = dev->GetNode();
+
+    for (uint32_t i = 0; i < channel->GetNDevices(); ++i)
+    {
+        Ptr<NetDevice> otherDev = channel->GetDevice(i);
+        Ptr<Node> otherNode = otherDev->GetNode();
+
+        if (otherNode != localNode)
+        {
+            for (const auto& [name, nodePtr] : nodeMap)
+            {
+                if (nodePtr == otherNode)
+                    return name;
+            }
+        }
+    }
+    return "UNKNOWN";
 }
 
 void
@@ -510,25 +540,29 @@ RecordQueueLengths(std::map<std::string, Ptr<Node>>& nodeMap,
                 break;
             }
         }
+        std::string peerNodeName;
+        peerNodeName = GetPeerNodeName(dev, nodeMap);
 
         uint32_t queueLength = 0;
-
         if (qdisc)
         {
             // Come in QueueStatusReceiver → legge la dimensione totale del QueueDisc
             queueLength = qdisc->GetNPackets();
-        }
-        else
+        } else
         {
-            /*
+            
             // Fallback: nel caso non ci sia un QueueDisc (es. TC disabilitato)
             Ptr<QueueBase> queue = DynamicCast<QueueBase>(dev->GetObject<QueueBase>());
             if (queue)
-                queueLength = queue->GetNPackets();*/
+                queueLength = queue->GetNPackets();
         }
 
-        queueLengthCsv << currentTime << "," << nodeName << "," << i << "," << queueLength
-                       << "\n";
+
+        queueLengthCsv << currentTime << "," 
+                        << nodeName << "," 
+                        << peerNodeName << "," 
+                        << i << "," 
+                        << queueLength << "\n";
     }
     Simulator::Schedule(Seconds(interval),
                         &RecordQueueLengths,
@@ -592,23 +626,22 @@ main()
 
     std::vector<Link> links;
 
-    // link originali    
-    // Aggiungi tutti i link con valori scalati
-    links.push_back({"ATLAng", "ATLAM5", 9.92}); // 99.2Mbps
-    links.push_back({"HSTNng", "ATLAng", 9.92});
-    links.push_back({"IPLSng", "ATLAng", 9.48});
-    links.push_back({"WASHng", "ATLAng", 9.92});
-    links.push_back({"IPLSng", "CHINng", 9.92});
-    links.push_back({"NYCMng", "CHINng", 9.92});
-    links.push_back({"KSCYng", "DNVRng", 9.92});
-    links.push_back({"SNVAng", "DNVRng", 9.92});
-    links.push_back({"STTLng", "DNVRng", 9.92});
-    links.push_back({"KSCYng", "HSTNng", 9.92});
-    links.push_back({"LOSAng", "HSTNng", 9.92});
-    links.push_back({"KSCYng", "IPLSng", 9.92});
-    links.push_back({"SNVAng", "LOSAng", 9.92});
-    links.push_back({"WASHng", "NYCMng", 9.92});
-    links.push_back({"STTLng", "SNVAng", 9.92});
+    // link con capacità scalata: capacita originale * 0.01
+    links.push_back({"ATLAng", "ATLAM5", 99.20}); // capacità originale: 9920 Mbps
+    links.push_back({"HSTNng", "ATLAng", 99.20});
+    links.push_back({"IPLSng", "ATLAng", 24.80});
+    links.push_back({"WASHng", "ATLAng", 99.20});
+    links.push_back({"IPLSng", "CHINng", 99.20});
+    links.push_back({"NYCMng", "CHINng", 99.20});
+    links.push_back({"KSCYng", "DNVRng", 99.20});
+    links.push_back({"SNVAng", "DNVRng", 99.20});
+    links.push_back({"STTLng", "DNVRng", 99.20});
+    links.push_back({"KSCYng", "HSTNng", 99.20});
+    links.push_back({"LOSAng", "HSTNng", 99.20});
+    links.push_back({"KSCYng", "IPLSng", 99.20});
+    links.push_back({"SNVAng", "LOSAng", 99.20});
+    links.push_back({"WASHng", "NYCMng", 99.20});
+    links.push_back({"STTLng", "SNVAng", 99.20});
 
     // contenitore di tutti i netDevice della rete
     NetDeviceContainer allDevices;
@@ -711,7 +744,7 @@ main()
 
         // Link host <-> router
         PointToPointHelper p2p;
-        p2p.SetDeviceAttribute("DataRate", StringValue("125Mbps"));
+        p2p.SetDeviceAttribute("DataRate", StringValue("15000Mbps"));
         p2p.SetChannelAttribute("Delay", StringValue("1ms"));
 
         NetDeviceContainer dev = p2p.Install(hostRouter);
@@ -809,11 +842,11 @@ main()
 
     // set della disciplina delle code
     TrafficControlHelper tch;
+    // Rimuove eventuali QueueDisc esistenti
     tch.Uninstall(allDevices);
-    // tch.Uninstall(allHostsDevs);
-    uint16_t handle =
-        tch.SetRootQueueDisc("ns3::PfifoFastQueueDisc", "MaxSize", StringValue("500000p"));
-    tch.AddInternalQueues(handle, 3, "ns3::DropTailQueue", "MaxSize", StringValue("500000p"));
+    // Installa UNA SOLA CODA FIFO per device
+    tch.SetRootQueueDisc("ns3::FifoQueueDisc", "MaxSize", StringValue("500p"));
+    // Applica a tutti i dispositivi router-router
     QueueDiscContainer qdiscs = tch.Install(allDevices);
 
     queueLengthCsv.open("queue_lengths.csv", std::ios::out);
@@ -823,11 +856,11 @@ main()
     }
     else
     {
-        // Intestazione: Time, NodeName, DeviceIndex, QueueLength
-        queueLengthCsv << "Time,NodeName,DeviceIndex,QueueLength\n";
+        // Intestazione: Time, NameNodeSrc, NameNodeDst, DeviceIndex, QueueLength
+        queueLengthCsv << "Time,NameNodeSrc,NameNodeDst,DeviceIndex,QueueLength\n";
     }
 
-    Simulator::Schedule(Seconds(0.0), &RecordQueueLengths, routerMap, allDevices, qdiscs, 0.5);
+    Simulator::Schedule(Seconds(0.0), &RecordQueueLengths, routerMap, allDevices, qdiscs, 0.01);
 
     // installo le app onoff per generare traffico
     auto allDemands = LoadAllMatrices();
@@ -838,34 +871,54 @@ main()
                               hostAddressMap,
                               0.248); // uso solo la prima demand*/
 
-    installOnOffApplicationForLatencyAnalysis(allDemands[0],
-                                              hostMap,
-                                              hostAddressMap,
-                                              0.223, // scala i valori di traffico
-                                              20.0,  // start time
-                                              80.0,  // stop time
-                                              2      // tipo di traffico: background
-    );
+    double startTime = 20.0;     // inizio prima applicazione
+    double interval = 1;       // 1000 ms tra un attivazione e l'altra  nell articolo ogni 400ms
+    double burstDuration = 0.3; // 300 ms durata di ogni burst         nell articolo durata: 60 ms
+    double stopTime = 40.0;      // tempo massimo di simulazione
 
+    // installo la prima applicazione “background” normalmente
     installOnOffApplicationForLatencyAnalysis(allDemands[1],
                                               hostMap,
                                               hostAddressMap,
-                                              0.248, // scala i valori di traffico
-                                              30.0,   // start time, dopo il traffico di background
-                                              80.0,   // stop time
-                                              0      // tipo di traffico: normale
-    );
+                                              0.01, // scala i valori di traffico
+                                              startTime,
+                                              stopTime,
+                                              2); // tipo traffico: background
 
-    installOnOffApplicationForLatencyAnalysis(allDemands[1],
+    // ora ciclo per creare i burst della seconda applicazione
+    double currentTime = startTime + 10;
+    while (currentTime < stopTime)
+    {
+        installOnOffApplicationForLatencyAnalysis(allDemands[2],
+                                                  hostMap,
+                                                  hostAddressMap,
+                                                  0.01,        // scala i valori di traffico
+                                                  currentTime, // start time
+                                                  currentTime + burstDuration, // stop time
+                                                  2); // tipo traffico: congestione
+
+        currentTime += interval;
+    }
+
+    installOnOffApplicationForLatencyAnalysis(allDemands[3],
                                               hostMap,
                                               hostAddressMap,
-                                              0.023, // scala i valori di traffico
-                                              30.0,  // start time, , dopo il traffico di background
-                                              80.0,  // stop time
+                                              0.01, // scala i valori di traffico
+                                              25.0,   // start time, dopo il traffico di background
+                                              40.0,   // stop time
+                                              0      // tipo di traffico: normale, da monitorare
+    );
+
+    /*installOnOffApplicationForLatencyAnalysis(allDemands[3],
+                                              hostMap,
+                                              hostAddressMap,
+                                              0.01, // scala i valori di traffico
+                                              25.0,  // start time, dopo il traffico di background
+                                              40.0,  // stop time
                                               1      // tipo di traffico: delay sensitiva
-    );
+    );*/
 
-    Simulator::Stop(Seconds(140.0));
+    Simulator::Stop(Seconds(80.0));
     Simulator::Run();
     Simulator::Destroy();
 
