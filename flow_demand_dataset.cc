@@ -156,7 +156,7 @@ LoadAllMatrices()
         },
         {
             // terza matrice, relativa al Traffic Bursts
-            {"KSCYng", "IPLSng", 16000},
+            {"KSCYng", "IPLSng", 15000},
         },
         {
             // quarta matrice, relativa al traffico da monitorare
