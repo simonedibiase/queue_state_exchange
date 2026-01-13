@@ -92,7 +92,7 @@ LoadDags()
             {"HSTNng"},
             {"CHINng"},
             {"LOSAng"},
-            {"SNVAng", "DNVRng"},
+            {"DNVRng", "SNVAng"},
             {"ATLAng", "NYCMng"},
         }},
 
